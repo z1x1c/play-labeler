@@ -38,6 +38,7 @@ it out frame by frame.
 | <kbd>→</kbd> | Mark **in play** from current frame |
 | <kbd>←</kbd> | Mark **non-play** from current frame |
 | <kbd>,</kbd> / <kbd>.</kbd> | Step one frame back / forward (hold <kbd>⇧</kbd> = ±10) |
+| <kbd>↓</kbd> | Jump back to the last labeled frame |
 | <kbd>[</kbd> / <kbd>]</kbd> | Jump to previous / next mark |
 | click timeline | Seek (drag to scrub) |
 | <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> | Undo / redo |

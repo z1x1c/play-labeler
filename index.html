@@ -200,7 +200,7 @@
 
     <div class="hint">
       <b>Label live while it plays:</b> hit <kbd>Space</kbd> to play, then tap <kbd>→</kbd> the moment a rally starts and <kbd>←</kbd> the moment it ends. A label fills forward until the next mark.
-      &nbsp;·&nbsp; Step frames <kbd>,</kbd> <kbd>.</kbd> (hold <kbd>⇧</kbd> = ±10) &nbsp;·&nbsp; Undo <kbd>⌘Z</kbd> / Redo <kbd>⇧⌘Z</kbd>
+      &nbsp;·&nbsp; Step frames <kbd>,</kbd> <kbd>.</kbd> (hold <kbd>⇧</kbd> = ±10) &nbsp;·&nbsp; <kbd>↓</kbd> back to last labeled frame &nbsp;·&nbsp; Undo <kbd>⌘Z</kbd> / Redo <kbd>⇧⌘Z</kbd>
     </div>
   </section>
 </main>
@@ -473,6 +473,7 @@
     switch(e.key){
       case "ArrowRight": e.preventDefault(); placeBoundary(currentFrame,PLAY); break;
       case "ArrowLeft":  e.preventDefault(); placeBoundary(currentFrame,NON);  break;
+      case "ArrowDown":  e.preventDefault(); jumpMark(-1); break;
       case ",":          e.preventDefault(); step(e.shiftKey?-10:-1); break;
       case ".":          e.preventDefault(); step(e.shiftKey?10:1);  break;
       case "[":          e.preventDefault(); jumpMark(-1); break;
