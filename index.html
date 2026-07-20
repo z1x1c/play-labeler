@@ -13,14 +13,39 @@
     --ink-3:#9a9aa0;
     --line:#e6e6e8;
     --line-2:#d8d8dc;
-    --play:#111113;      /* solid black band  = IN PLAY   */
-    --nonplay:#ffffff;   /* light band        = NON-PLAY  */
-    --unlabeled:#efeff1; /* mid gray          = unlabeled */
+    --play:#111113;      /* dark band  = IN PLAY   */
+    --nonplay:#ffffff;   /* light band = NON-PLAY  */
+    --unlabeled:#efeff1; /* mid gray   = unlabeled */
     --accent:#0a84ff;    /* single restrained accent (playhead) */
+    --btn-bg:#ffffff;
+    --btn-hover:#f5f5f7;
+    --ghost-hover:#f0f0f2;
+    --kbd:#f2f2f4;
+    --header-bg:rgba(255,255,255,.82);
+    --drop-drag:#f4f4f6;
     --radius:12px;
     --radius-sm:8px;
     --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
     font-synthesis:none;
+  }
+  html.dark{
+    --bg:#101013;
+    --panel:#17171b;
+    --ink:#f2f2f4;
+    --ink-2:#a3a3ab;
+    --ink-3:#717179;
+    --line:#26262b;
+    --line-2:#35353b;
+    --play:#f2f2f4;      /* bands invert with the theme: light band = IN PLAY */
+    --nonplay:#17171b;
+    --unlabeled:#2a2a30;
+    --btn-bg:#1e1e23;
+    --btn-hover:#26262c;
+    --ghost-hover:#222228;
+    --kbd:#26262c;
+    --header-bg:rgba(16,16,19,.82);
+    --drop-drag:#1c1c21;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.5);
   }
   *{box-sizing:border-box}
   html,body{height:100%}
@@ -42,7 +67,7 @@
     display:flex; align-items:center; gap:14px;
     padding:14px 22px;
     border-bottom:1px solid var(--line);
-    position:sticky; top:0; background:rgba(255,255,255,.82);
+    position:sticky; top:0; background:var(--header-bg);
     backdrop-filter:saturate(180%) blur(20px);
     z-index:10;
   }
@@ -53,17 +78,18 @@
   .filename{color:var(--ink-2);font-size:13px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   .btn{
-    appearance:none;border:1px solid var(--line-2);background:#fff;color:var(--ink);
+    appearance:none;border:1px solid var(--line-2);background:var(--btn-bg);color:var(--ink);
     padding:7px 13px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;
     cursor:pointer;transition:.12s ease; letter-spacing:-.01em;
   }
-  .btn:hover{background:#f5f5f7}
+  .btn:hover{background:var(--btn-hover)}
   .btn:active{transform:translateY(.5px)}
   .btn:disabled{opacity:.4;cursor:default;transform:none}
-  .btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
-  .btn.primary:hover{background:#000}
+  .btn.primary{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+  .btn.primary:hover{opacity:.88}
   .btn.ghost{border-color:transparent;background:transparent}
-  .btn.ghost:hover{background:#f0f0f2}
+  .btn.ghost:hover{background:var(--ghost-hover)}
+  .btn.on{background:var(--ink);border-color:var(--ink);color:var(--bg)}
 
   main{flex:1;display:flex;flex-direction:column;max-width:1180px;width:100%;margin:0 auto;padding:22px}
 
@@ -74,7 +100,7 @@
     min-height:60vh;color:var(--ink-2);gap:14px;text-align:center;transition:.15s;
     background:var(--panel);
   }
-  #drop.drag{border-color:var(--ink);background:#f4f4f6;color:var(--ink)}
+  #drop.drag{border-color:var(--ink);background:var(--drop-drag);color:var(--ink)}
   #drop h1{font-size:26px;margin:0;color:var(--ink);font-weight:600;letter-spacing:-.02em}
   #drop p{margin:0;font-size:14px;max-width:440px;line-height:1.5}
   #drop .glyph{font-size:40px;line-height:1;opacity:.85}
@@ -113,21 +139,31 @@
   .legend .sw.nonplay{background:var(--nonplay)}
   .legend .sw.unlabeled{background:var(--unlabeled)}
   .legend .spacer{flex:1}
-  .legend kbd{font:inherit;font-size:11px;background:#f2f2f4;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
+  .legend kbd{font:inherit;font-size:11px;background:var(--kbd);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
 
   /* ---------- controls ---------- */
   .controls{display:flex;align-items:center;gap:10px;margin-top:18px;flex-wrap:wrap}
   .controls .group{display:flex;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px}
   .lab-btn{min-width:120px;font-weight:600}
-  .lab-btn.play{background:var(--ink);border-color:var(--ink);color:#fff}
-  .lab-btn.play:hover{background:#000}
-  .lab-btn.nonplay{background:#fff}
+  .lab-btn.play{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+  .lab-btn.play:hover{opacity:.88}
+  .lab-btn.nonplay{background:var(--btn-bg)}
   .controls .spacer{flex:1}
   .fps{display:flex;align-items:center;gap:7px;color:var(--ink-2);font-size:13px}
-  .fps input{width:58px;padding:6px 8px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px;text-align:right}
+  .fps input{width:58px;padding:6px 8px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px;text-align:right;background:var(--btn-bg);color:var(--ink)}
 
   .hint{margin-top:16px;color:var(--ink-3);font-size:12.5px;line-height:1.7}
-  .hint kbd{font:inherit;font-size:11px;background:#f2f2f4;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink);margin:0 1px}
+  .hint kbd{font:inherit;font-size:11px;background:var(--kbd);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink);margin:0 1px}
+
+  /* ---------- hover preview tooltip ---------- */
+  #tip{
+    position:fixed;z-index:30;pointer-events:none;
+    transform:translate(-50%, calc(-100% - 12px));
+    background:var(--panel);border:1px solid var(--line-2);border-radius:10px;
+    padding:5px;box-shadow:var(--shadow);
+  }
+  #tip canvas{display:block;border-radius:6px;background:#000}
+  #tip .tt{text-align:center;font-size:11.5px;color:var(--ink-2);margin-top:4px;font-variant-numeric:tabular-nums}
   footer{color:var(--ink-3);font-size:12px;text-align:center;padding:20px}
   a{color:var(--ink-2)}
 </style>
@@ -137,6 +173,7 @@
   <div class="brand"><span class="dot"></span> Play Labeler <small>in-play / non-play</small></div>
   <div class="spacer"></div>
   <div class="filename" id="filename"></div>
+  <button class="btn ghost" id="btnTheme" title="Switch light / dark theme">☾ Dark</button>
   <button class="btn ghost" id="btnUndo" disabled title="Undo (⌘Z)">Undo</button>
   <button class="btn ghost" id="btnRedo" disabled title="Redo (⇧⌘Z)">Redo</button>
   <button class="btn ghost" id="btnClear" disabled>Clear</button>
@@ -178,7 +215,7 @@
         <span><span class="sw nonplay"></span>Non-play</span>
         <span><span class="sw unlabeled"></span>Unlabeled</span>
         <span class="spacer"></span>
-        <span>Click the timeline to seek · <kbd>[</kbd> <kbd>]</kbd> jump between marks</span>
+        <span>Click to seek · hover for a preview · drag a mark to move it · <kbd>[</kbd> <kbd>]</kbd> jump between marks</span>
       </div>
     </div>
 
@@ -192,6 +229,13 @@
         <button class="btn lab-btn nonplay" id="btnNon" title="Mark NON-PLAY from here (←)">← Non-play</button>
         <button class="btn lab-btn play" id="btnPlayLbl" title="Mark IN-PLAY from here (→)">In play →</button>
       </div>
+      <div class="group" title="Playback speed">
+        <button class="btn spd" data-s="0.25">¼×</button>
+        <button class="btn spd" data-s="0.5">½×</button>
+        <button class="btn spd on" data-s="1">1×</button>
+        <button class="btn spd" data-s="1.5">1.5×</button>
+        <button class="btn spd" data-s="2">2×</button>
+      </div>
       <div class="spacer"></div>
       <div class="group">
         <span class="fps">FPS <input id="fps" type="number" min="1" max="240" step="0.01" value="30" /></span>
@@ -200,6 +244,7 @@
 
     <div class="hint">
       <b>Label live while it plays:</b> hit <kbd>Space</kbd> to play, then tap <kbd>→</kbd> the moment a rally starts and <kbd>←</kbd> the moment it ends. A label fills forward until the next mark.
+      When paused, placing a label auto-steps to the next frame.
       &nbsp;·&nbsp; Step frames <kbd>,</kbd> <kbd>.</kbd> (hold <kbd>⇧</kbd> = ±10) &nbsp;·&nbsp; <kbd>↓</kbd> back to last labeled frame &nbsp;·&nbsp; Undo <kbd>⌘Z</kbd> / Redo <kbd>⇧⌘Z</kbd>
     </div>
   </section>
@@ -208,6 +253,8 @@
 <footer>Play Labeler · runs 100% locally · <span id="foot"></span></footer>
 
 <input id="file" type="file" accept="video/*" class="hidden" />
+
+<div id="tip" class="hidden"><canvas id="tipCv" width="200" height="112"></canvas><div class="tt" id="tipTxt"></div></div>
 
 <script>
 "use strict";
@@ -281,6 +328,9 @@
     else boundaries.push({frame, label});
     normalize();
     refresh();
+    // when stepping frame-by-frame, advance so the next frame is ready to judge
+    // (during live playback the video is already moving — don't cause a seek hiccup)
+    if(video.paused) step(1);
   }
 
   function undo(){ if(!history.length) return; future.push(JSON.stringify(boundaries)); boundaries=JSON.parse(history.pop()); refresh(); }
@@ -310,11 +360,9 @@
   }
 
   // ---------- rendering ----------
-  function colorFor(label){
-    if(label===PLAY) return "#111113";
-    if(label===NON)  return "#ffffff";
-    return "#efeff1";
-  }
+  const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  let hoverFrame=null, hoverMark=null, dragMark=null;   // hoverMark/dragMark hold a boundary object
 
   function drawTimeline(){
     const rect = tl.getBoundingClientRect();
@@ -326,33 +374,45 @@
     ctx.clearRect(0,0,W,H);
 
     if(!frameCount){ return; }
+    const playC=cssVar("--play"), nonC=cssVar("--nonplay"), unlC=cssVar("--unlabeled"), accC=cssVar("--accent");
+    const dark=document.documentElement.classList.contains("dark");
 
     // paint per-column effective label
     let bi = -1;              // current boundary index while scanning left→right
-    let nextFrame = boundaries.length ? boundaries[0].frame : Infinity;
     for(let x=0; x<W; x++){
       const f = Math.floor(x / W * frameCount);
       while(bi+1 < boundaries.length && boundaries[bi+1].frame<=f){ bi++; }
       const label = bi<0 ? null : boundaries[bi].label;
-      ctx.fillStyle = colorFor(label);
+      ctx.fillStyle = label===PLAY ? playC : label===NON ? nonC : unlC;
       ctx.fillRect(x,0,1,H);
     }
-    // subtle separator line for non-play (light) bands so they read against the panel
-    ctx.strokeStyle="rgba(0,0,0,.06)"; ctx.strokeRect(.5,.5,W-1,H-1);
+    // subtle separator so bands matching the panel color still read
+    ctx.strokeStyle=dark?"rgba(255,255,255,.08)":"rgba(0,0,0,.06)"; ctx.strokeRect(.5,.5,W-1,H-1);
 
-    // boundary marks
+    // boundary marks — grabbable handles: full-height line + caps top and bottom
     for(const b of boundaries){
-      const x = b.frame / frameCount * W;
-      ctx.fillStyle = b.label===PLAY ? "#ffffff" : "#111113";
-      ctx.fillRect(Math.round(x)-1, 0, 2, H);
-      // little cap so a mark is visible even on same-color band
-      ctx.fillStyle = b.label===PLAY ? "#111113" : "#ffffff";
-      ctx.fillRect(Math.round(x)-1, H-6, 2, 6);
+      const x = Math.round(b.frame / frameCount * W);
+      const hot = b===hoverMark || b===dragMark;
+      const main = b.label===PLAY ? nonC : playC;       // contrast against own band
+      const cap  = b.label===PLAY ? playC : nonC;
+      const w = hot ? 5 : 3;
+      ctx.fillStyle = hot ? accC : main;
+      ctx.fillRect(x-(w>>1), 0, w, H);
+      ctx.fillStyle = hot ? accC : cap;
+      ctx.fillRect(x-(w>>1)-2, 0, w+4, 5);
+      ctx.fillRect(x-(w>>1)-2, H-5, w+4, 5);
+    }
+
+    // hover position ghost line
+    if(hoverFrame!=null && !dragMark && !hoverMark){
+      const hx = frameCount>1 ? hoverFrame/(frameCount-1)*W : 0;
+      ctx.fillStyle = "rgba(10,132,255,.45)";
+      ctx.fillRect(Math.round(hx), 0, 1, H);
     }
 
     // playhead
     const px = frameCount>1 ? currentFrame/(frameCount-1)*W : 0;
-    ctx.fillStyle = "#0a84ff";
+    ctx.fillStyle = accC || "#0a84ff";
     ctx.fillRect(Math.round(px)-1, 0, 2, H);
   }
 
@@ -408,6 +468,7 @@
     filenameEl.textContent = file.name;
     const url = URL.createObjectURL(file);
     video.src = url;
+    pv.src = url;   // hover-preview decoder shares the same local file
     video.addEventListener("loadedmetadata", ()=>{
       fps = parseFloat(fpsInput.value)||30;
       frameCount = Math.max(1, Math.round(video.duration * fps));
@@ -446,20 +507,87 @@
   $("btnStepB").onclick=()=>step(-1);
   $("btnStepF").onclick=()=>step(1);
   $("btnPlay").onclick=togglePlay;
+  document.querySelectorAll(".spd").forEach(b=>b.onclick=()=>{
+    video.playbackRate=parseFloat(b.dataset.s)||1;
+    document.querySelectorAll(".spd").forEach(x=>x.classList.toggle("on",x===b));
+  });
   $("btnNon").onclick=()=>placeBoundary(currentFrame,NON);
   $("btnPlayLbl").onclick=()=>placeBoundary(currentFrame,PLAY);
   btnUndo.onclick=undo; btnRedo.onclick=redo; btnClear.onclick=clearAll;
 
-  // timeline click / drag to seek
-  function seekFromEvent(e){
+  // ---------- timeline: seek, marker select/drag, hover preview ----------
+  function frameFromEvent(e){
     const rect=tl.getBoundingClientRect();
     const x=Math.max(0,Math.min(rect.width, e.clientX-rect.left));
-    gotoFrame(Math.round(x/rect.width*(frameCount-1)));
+    return Math.round(x/rect.width*(frameCount-1));
   }
+  function seekFromEvent(e){ gotoFrame(frameFromEvent(e)); }
+  // boundary mark within grab distance of the pointer (px), or null
+  function markNear(e){
+    const rect=tl.getBoundingClientRect(), x=e.clientX-rect.left;
+    let best=null, bd=8;
+    for(const b of boundaries){
+      const d=Math.abs(b.frame/frameCount*rect.width - x);
+      if(d<bd){ bd=d; best=b; }
+    }
+    return best;
+  }
+
+  // hover preview: a hidden second <video> decodes the hovered frame into a tooltip
+  const pv=document.createElement("video"); pv.muted=true; pv.preload="auto"; pv.playsInline=true;
+  let pvBusy=false, pvNext=null;
+  pv.addEventListener("seeked", ()=>{
+    const c=$("tipCv");
+    if(pv.videoWidth){ const h=Math.round(c.width*pv.videoHeight/pv.videoWidth); if(h && c.height!==h) c.height=h; }
+    c.getContext("2d").drawImage(pv,0,0,c.width,c.height);
+    pvBusy=false;
+    if(pvNext!=null){ const t=pvNext; pvNext=null; pvSeek(t); }
+  });
+  function pvSeek(t){ if(!pv.src) return; if(pvBusy){ pvNext=t; return; } pvBusy=true; pv.currentTime=t; }
+  function showTip(e){
+    if(!frameCount) return;
+    const tip=$("tip"), rect=tl.getBoundingClientRect(), f=frameFromEvent(e);
+    tip.classList.remove("hidden");
+    tip.style.left=Math.max(112, Math.min(window.innerWidth-112, e.clientX))+"px";
+    tip.style.top=rect.top+"px";
+    $("tipTxt").textContent="frame "+f+" · "+fmtTime(f/fps);
+    pvSeek((f+0.0001)/fps);
+  }
+  function hideTip(){ $("tip").classList.add("hidden"); }
+
   let scrubbing=false;
-  tl.addEventListener("pointerdown", e=>{ scrubbing=true; tl.setPointerCapture(e.pointerId); seekFromEvent(e); });
-  tl.addEventListener("pointermove", e=>{ if(scrubbing) seekFromEvent(e); });
-  tl.addEventListener("pointerup",   ()=>{ scrubbing=false; });
+  tl.addEventListener("pointerdown", e=>{
+    tl.setPointerCapture(e.pointerId);
+    const m=markNear(e);
+    if(m){ dragMark=m; dragMoved=false; gotoFrame(m.frame); }   // click selects the mark; drag moves it
+    else { scrubbing=true; seekFromEvent(e); }
+  });
+  let dragMoved=false;
+  tl.addEventListener("pointermove", e=>{
+    if(dragMark){
+      const f=frameFromEvent(e);
+      if(f!==dragMark.frame){
+        if(!dragMoved){ snapshot(); dragMoved=true; }
+        dragMark.frame=f;
+        boundaries.sort((a,b)=>a.frame-b.frame);   // keep scan order valid while crossing marks
+        gotoFrame(f); refresh();
+      }
+    }
+    else if(scrubbing) seekFromEvent(e);
+    else {
+      hoverMark=markNear(e);
+      tl.style.cursor=hoverMark?"ew-resize":"pointer";
+    }
+    hoverFrame=frameFromEvent(e);
+    showTip(e); drawTimeline();
+  });
+  tl.addEventListener("pointerup", ()=>{
+    if(dragMark){ if(dragMoved) normalize(); dragMark=null; refresh(); }
+    scrubbing=false;
+  });
+  tl.addEventListener("pointerleave", ()=>{
+    hoverFrame=null; hoverMark=null; hideTip(); drawTimeline();
+  });
 
   window.addEventListener("resize", ()=>{ if(!editor.classList.contains("hidden")) drawTimeline(); });
 
@@ -538,6 +666,21 @@
     download(base+".labels.csv", csv, "text/csv");
   }
   btnExport.onclick=exportAll;
+
+  // ---------- theme ----------
+  function applyTheme(t){
+    document.documentElement.classList.toggle("dark", t==="dark");
+    $("btnTheme").textContent = t==="dark" ? "☀︎ Light" : "☾ Dark";
+    if(!editor.classList.contains("hidden")) drawTimeline();
+  }
+  $("btnTheme").onclick = ()=>{
+    const t = document.documentElement.classList.contains("dark") ? "light" : "dark";
+    try{ localStorage.setItem("playlabeler:theme", t); }catch(e){}
+    applyTheme(t);
+  };
+  let theme=null;
+  try{ theme=localStorage.getItem("playlabeler:theme"); }catch(e){}
+  applyTheme(theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 
   $("foot").textContent = "space play · ← non-play · → in play";
 })();

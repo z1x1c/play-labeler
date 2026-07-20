@@ -43,8 +43,16 @@ it out frame by frame.
 | click timeline | Seek (drag to scrub) |
 | <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd> | Undo / redo |
 
-The timeline shows every labeled segment (black = in play, white = non-play, gray =
-unlabeled) plus tick marks at each boundary, so you can navigate what you've already done.
+When the video is **paused**, placing a label automatically steps to the next frame, so
+you can judge frame-by-frame without extra keypresses. Playback **speed** buttons
+(¼× – 2×) sit next to the transport for fast sweeps or slow-motion boundaries.
+
+The timeline shows every labeled segment (dark = in play, light = non-play, gray =
+unlabeled) plus a handle at each boundary. **Hover** the timeline for a thumbnail
+preview of that exact spot with its frame number; **click a handle** to jump to that
+boundary, or **drag it** to move the boundary (undoable). A **☾ / ☀︎** button in the top
+bar switches between light and dark themes (it follows your system preference by
+default).
 
 ## Export format
 
