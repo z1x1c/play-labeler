@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Play Labeler</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --panel:#fbfbfb;
+    --ink:#111113;
+    --ink-2:#6b6b70;
+    --ink-3:#9a9aa0;
+    --line:#e6e6e8;
+    --line-2:#d8d8dc;
+    --play:#111113;      /* solid black band  = IN PLAY   */
+    --nonplay:#ffffff;   /* light band        = NON-PLAY  */
+    --unlabeled:#efeff1; /* mid gray          = unlabeled */
+    --accent:#0a84ff;    /* single restrained accent (playhead) */
+    --radius:12px;
+    --radius-sm:8px;
+    --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    display:flex;
+    flex-direction:column;
+    min-height:100%;
+  }
+  button{font-family:inherit}
+
+  /* ---------- top bar ---------- */
+  header{
+    display:flex; align-items:center; gap:14px;
+    padding:14px 22px;
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:rgba(255,255,255,.82);
+    backdrop-filter:saturate(180%) blur(20px);
+    z-index:10;
+  }
+  .brand{display:flex; align-items:center; gap:10px; font-weight:600; letter-spacing:-.01em}
+  .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--ink);display:inline-block}
+  .brand small{color:var(--ink-3);font-weight:500;letter-spacing:0}
+  header .spacer{flex:1}
+  .filename{color:var(--ink-2);font-size:13px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .btn{
+    appearance:none;border:1px solid var(--line-2);background:#fff;color:var(--ink);
+    padding:7px 13px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;
+    cursor:pointer;transition:.12s ease; letter-spacing:-.01em;
+  }
+  .btn:hover{background:#f5f5f7}
+  .btn:active{transform:translateY(.5px)}
+  .btn:disabled{opacity:.4;cursor:default;transform:none}
+  .btn.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+  .btn.primary:hover{background:#000}
+  .btn.ghost{border-color:transparent;background:transparent}
+  .btn.ghost:hover{background:#f0f0f2}
+
+  main{flex:1;display:flex;flex-direction:column;max-width:1180px;width:100%;margin:0 auto;padding:22px}
+
+  /* ---------- drop zone ---------- */
+  #drop{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1.5px dashed var(--line-2);border-radius:var(--radius);
+    min-height:60vh;color:var(--ink-2);gap:14px;text-align:center;transition:.15s;
+    background:var(--panel);
+  }
+  #drop.drag{border-color:var(--ink);background:#f4f4f6;color:var(--ink)}
+  #drop h1{font-size:26px;margin:0;color:var(--ink);font-weight:600;letter-spacing:-.02em}
+  #drop p{margin:0;font-size:14px;max-width:440px;line-height:1.5}
+  #drop .glyph{font-size:40px;line-height:1;opacity:.85}
+  .hidden{display:none!important}
+
+  /* ---------- editor ---------- */
+  .stage{position:relative;background:#000;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  video{display:block;width:100%;max-height:60vh;background:#000}
+  .badge{
+    position:absolute;top:14px;left:14px;padding:7px 12px;border-radius:999px;
+    font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.25);
+  }
+  .badge.play{background:rgba(255,255,255,.92);color:#000}
+  .badge.nonplay{background:rgba(20,20,22,.72);color:#fff}
+  .badge.none{background:rgba(20,20,22,.5);color:#fff}
+
+  .readout{
+    display:flex;align-items:center;gap:18px;margin:16px 2px 10px;
+    font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:13px;
+  }
+  .readout b{color:var(--ink);font-weight:600}
+  .readout .sep{width:1px;height:14px;background:var(--line-2)}
+
+  /* ---------- timeline ---------- */
+  .tl-wrap{margin:6px 0 4px}
+  .tl{
+    position:relative;width:100%;height:56px;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line);cursor:pointer;background:var(--unlabeled);
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.01);
+  }
+  .tl canvas{display:block;width:100%;height:100%}
+  .legend{display:flex;gap:18px;align-items:center;margin-top:10px;font-size:12px;color:var(--ink-2)}
+  .legend .sw{display:inline-block;width:22px;height:12px;border-radius:3px;vertical-align:middle;margin-right:7px;border:1px solid var(--line-2)}
+  .legend .sw.play{background:var(--play)}
+  .legend .sw.nonplay{background:var(--nonplay)}
+  .legend .sw.unlabeled{background:var(--unlabeled)}
+  .legend .spacer{flex:1}
+  .legend kbd{font:inherit;font-size:11px;background:#f2f2f4;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;align-items:center;gap:10px;margin-top:18px;flex-wrap:wrap}
+  .controls .group{display:flex;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px}
+  .lab-btn{min-width:120px;font-weight:600}
+  .lab-btn.play{background:var(--ink);border-color:var(--ink);color:#fff}
+  .lab-btn.play:hover{background:#000}
+  .lab-btn.nonplay{background:#fff}
+  .controls .spacer{flex:1}
+  .fps{display:flex;align-items:center;gap:7px;color:var(--ink-2);font-size:13px}
+  .fps input{width:58px;padding:6px 8px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px;text-align:right}
+
+  .hint{margin-top:16px;color:var(--ink-3);font-size:12.5px;line-height:1.7}
+  .hint kbd{font:inherit;font-size:11px;background:#f2f2f4;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink);margin:0 1px}
+  footer{color:var(--ink-3);font-size:12px;text-align:center;padding:20px}
+  a{color:var(--ink-2)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span> Play Labeler <small>in-play / non-play</small></div>
+  <div class="spacer"></div>
+  <div class="filename" id="filename"></div>
+  <button class="btn ghost" id="btnUndo" disabled title="Undo (⌘Z)">Undo</button>
+  <button class="btn ghost" id="btnRedo" disabled title="Redo (⇧⌘Z)">Redo</button>
+  <button class="btn ghost" id="btnClear" disabled>Clear</button>
+  <button class="btn" id="btnOpen" title="Open a different video">Open…</button>
+  <button class="btn primary" id="btnExport" disabled>Export</button>
+</header>
+
+<main>
+  <!-- landing -->
+  <div id="drop">
+    <div class="glyph">◐</div>
+    <h1>Drop a video to start labeling</h1>
+    <p>Everything runs locally in your browser — your video is never uploaded anywhere.
+       Mark where play starts and stops; every frame in between is labeled automatically.</p>
+    <button class="btn primary" id="btnChoose">Choose video…</button>
+  </div>
+
+  <!-- editor -->
+  <section id="editor" class="hidden">
+    <div class="stage">
+      <video id="video" playsinline></video>
+      <div class="badge none" id="badge">—</div>
+    </div>
+
+    <div class="readout">
+      <span>Frame <b id="rFrame">0</b> / <span id="rTotal">0</span></span>
+      <span class="sep"></span>
+      <span><b id="rTime">0:00.000</b></span>
+      <span class="sep"></span>
+      <span>Current label: <b id="rLabel">—</b></span>
+      <span class="sep"></span>
+      <span><b id="rCoverage">0%</b> labeled</span>
+    </div>
+
+    <div class="tl-wrap">
+      <div class="tl" id="tl"><canvas id="tlCanvas"></canvas></div>
+      <div class="legend">
+        <span><span class="sw play"></span>In play</span>
+        <span><span class="sw nonplay"></span>Non-play</span>
+        <span><span class="sw unlabeled"></span>Unlabeled</span>
+        <span class="spacer"></span>
+        <span>Click the timeline to seek · <kbd>[</kbd> <kbd>]</kbd> jump between marks</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="group">
+        <button class="btn" id="btnStepB" title="Prev frame (,)">◀ Frame</button>
+        <button class="btn" id="btnPlay" title="Play / Pause (Space)">Play ▸</button>
+        <button class="btn" id="btnStepF" title="Next frame (.)">Frame ▶</button>
+      </div>
+      <div class="group">
+        <button class="btn lab-btn nonplay" id="btnNon" title="Mark NON-PLAY from here (←)">← Non-play</button>
+        <button class="btn lab-btn play" id="btnPlayLbl" title="Mark IN-PLAY from here (→)">In play →</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="group">
+        <span class="fps">FPS <input id="fps" type="number" min="1" max="240" step="0.01" value="30" /></span>
+      </div>
+    </div>
+
+    <div class="hint">
+      <b>Label live while it plays:</b> hit <kbd>Space</kbd> to play, then tap <kbd>→</kbd> the moment a rally starts and <kbd>←</kbd> the moment it ends. A label fills forward until the next mark.
+      &nbsp;·&nbsp; Step frames <kbd>,</kbd> <kbd>.</kbd> (hold <kbd>⇧</kbd> = ±10) &nbsp;·&nbsp; Undo <kbd>⌘Z</kbd> / Redo <kbd>⇧⌘Z</kbd>
+    </div>
+  </section>
+</main>
+
+<footer>Play Labeler · runs 100% locally · <span id="foot"></span></footer>
+
+<input id="file" type="file" accept="video/*" class="hidden" />
+
+<script>
+"use strict";
+(() => {
+  // ---------- DOM ----------
+  const $ = id => document.getElementById(id);
+  const drop=$("drop"), editor=$("editor"), fileInput=$("file"), video=$("video");
+  const badge=$("badge"), tl=$("tl"), cv=$("tlCanvas"), ctx=cv.getContext("2d");
+  const rFrame=$("rFrame"), rTotal=$("rTotal"), rTime=$("rTime"), rLabel=$("rLabel"), rCoverage=$("rCoverage");
+  const fpsInput=$("fps"), filenameEl=$("filename");
+  const btnExport=$("btnExport"), btnUndo=$("btnUndo"), btnRedo=$("btnRedo"), btnClear=$("btnClear");
+
+  const PLAY="play", NON="nonplay";
+
+  // ---------- state ----------
+  let fps = 30;
+  let frameCount = 0;
+  let currentFrame = 0;
+  let videoName = "video";
+  // boundaries: sorted list of {frame, label}. Effective label at f = label of the
+  // last boundary with boundary.frame <= f; frames before the first boundary = unlabeled.
+  let boundaries = [];
+  let history = [];   // past snapshots (JSON strings of boundaries)
+  let future = [];    // redo stack
+
+  // ---------- helpers ----------
+  const clampFrame = f => Math.max(0, Math.min(frameCount ? frameCount - 1 : 0, Math.round(f)));
+
+  function fmtTime(sec){
+    if(!isFinite(sec)) sec = 0;
+    const m = Math.floor(sec/60);
+    const s = (sec - m*60);
+    return m + ":" + s.toFixed(3).padStart(6,"0");
+  }
+
+  // last boundary index with frame <= f (binary search); -1 if none
+  function boundaryIndexAt(f){
+    let lo=0, hi=boundaries.length-1, res=-1;
+    while(lo<=hi){
+      const mid=(lo+hi)>>1;
+      if(boundaries[mid].frame<=f){ res=mid; lo=mid+1; }
+      else hi=mid-1;
+    }
+    return res;
+  }
+  function labelAt(f){
+    const i = boundaryIndexAt(f);
+    return i<0 ? null : boundaries[i].label;
+  }
+
+  // ---------- edits (history-tracked) ----------
+  function snapshot(){ history.push(JSON.stringify(boundaries)); if(history.length>500) history.shift(); future.length=0; }
+
+  function normalize(){
+    boundaries.sort((a,b)=>a.frame-b.frame);
+    // collapse consecutive boundaries carrying the same label
+    const out=[];
+    for(const b of boundaries){
+      if(out.length && out[out.length-1].label===b.label) continue;
+      if(out.length && out[out.length-1].frame===b.frame) out.pop();
+      out.push(b);
+    }
+    boundaries=out;
+  }
+
+  function placeBoundary(frame, label){
+    snapshot();
+    frame = clampFrame(frame);
+    const existing = boundaries.findIndex(b=>b.frame===frame);
+    if(existing>=0) boundaries[existing].label=label;
+    else boundaries.push({frame, label});
+    normalize();
+    refresh();
+  }
+
+  function undo(){ if(!history.length) return; future.push(JSON.stringify(boundaries)); boundaries=JSON.parse(history.pop()); refresh(); }
+  function redo(){ if(!future.length) return; history.push(JSON.stringify(boundaries)); boundaries=JSON.parse(future.pop()); refresh(); }
+  function clearAll(){ if(!boundaries.length) return; snapshot(); boundaries=[]; refresh(); }
+
+  // ---------- navigation ----------
+  let seeking=false;
+  function gotoFrame(f){
+    currentFrame = clampFrame(f);
+    if(!video.duration) return;
+    seeking=true;
+    video.currentTime = Math.min(video.duration, (currentFrame + 0.0001)/fps);
+  }
+  function step(n){ gotoFrame(currentFrame + n); }
+
+  function jumpMark(dir){
+    if(!boundaries.length) return;
+    if(dir>0){
+      const b = boundaries.find(b=>b.frame>currentFrame);
+      if(b) gotoFrame(b.frame);
+    } else {
+      let target=null;
+      for(const b of boundaries){ if(b.frame<currentFrame) target=b.frame; else break; }
+      if(target!=null) gotoFrame(target);
+    }
+  }
+
+  // ---------- rendering ----------
+  function colorFor(label){
+    if(label===PLAY) return "#111113";
+    if(label===NON)  return "#ffffff";
+    return "#efeff1";
+  }
+
+  function drawTimeline(){
+    const rect = tl.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.max(1, Math.round(rect.width));
+    const H = Math.max(1, Math.round(rect.height));
+    if(cv.width!==W*dpr || cv.height!==H*dpr){ cv.width=W*dpr; cv.height=H*dpr; }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,W,H);
+
+    if(!frameCount){ return; }
+
+    // paint per-column effective label
+    let bi = -1;              // current boundary index while scanning left→right
+    let nextFrame = boundaries.length ? boundaries[0].frame : Infinity;
+    for(let x=0; x<W; x++){
+      const f = Math.floor(x / W * frameCount);
+      while(bi+1 < boundaries.length && boundaries[bi+1].frame<=f){ bi++; }
+      const label = bi<0 ? null : boundaries[bi].label;
+      ctx.fillStyle = colorFor(label);
+      ctx.fillRect(x,0,1,H);
+    }
+    // subtle separator line for non-play (light) bands so they read against the panel
+    ctx.strokeStyle="rgba(0,0,0,.06)"; ctx.strokeRect(.5,.5,W-1,H-1);
+
+    // boundary marks
+    for(const b of boundaries){
+      const x = b.frame / frameCount * W;
+      ctx.fillStyle = b.label===PLAY ? "#ffffff" : "#111113";
+      ctx.fillRect(Math.round(x)-1, 0, 2, H);
+      // little cap so a mark is visible even on same-color band
+      ctx.fillStyle = b.label===PLAY ? "#111113" : "#ffffff";
+      ctx.fillRect(Math.round(x)-1, H-6, 2, 6);
+    }
+
+    // playhead
+    const px = frameCount>1 ? currentFrame/(frameCount-1)*W : 0;
+    ctx.fillStyle = "#0a84ff";
+    ctx.fillRect(Math.round(px)-1, 0, 2, H);
+  }
+
+  function updateBadge(){
+    const l = labelAt(currentFrame);
+    badge.className = "badge " + (l===PLAY?"play":l===NON?"nonplay":"none");
+    badge.textContent = l===PLAY ? "IN PLAY" : l===NON ? "NON-PLAY" : "—";
+  }
+
+  function coverage(){
+    if(!frameCount || !boundaries.length) return 0;
+    // labeled region = from first boundary to end
+    const first = boundaries[0].frame;
+    return Math.round((frameCount - first)/frameCount*100);
+  }
+
+  function refresh(){
+    rFrame.textContent = currentFrame;
+    rTotal.textContent = frameCount;
+    rTime.textContent = fmtTime(currentFrame/fps);
+    const l = labelAt(currentFrame);
+    rLabel.textContent = l===PLAY?"In play":l===NON?"Non-play":"—";
+    rCoverage.textContent = coverage()+"%";
+    updateBadge();
+    drawTimeline();
+    btnUndo.disabled = !history.length;
+    btnRedo.disabled = !future.length;
+    btnClear.disabled = !boundaries.length;
+    btnExport.disabled = !boundaries.length;
+  }
+
+  // ---------- playback ----------
+  let playing=false;
+  function togglePlay(){
+    if(video.paused){ video.play(); } else { video.pause(); }
+  }
+  function frameLoop(){
+    if(video.paused || video.ended) return;
+    currentFrame = clampFrame(video.currentTime * fps);
+    rFrame.textContent=currentFrame; rTime.textContent=fmtTime(video.currentTime);
+    updateBadge(); drawTimeline();
+    if("requestVideoFrameCallback" in video) video.requestVideoFrameCallback(frameLoop);
+    else requestAnimationFrame(frameLoop);
+  }
+  video.addEventListener("play", ()=>{ $("btnPlay").textContent="Pause ❙❙"; frameLoop(); });
+  video.addEventListener("pause", ()=>{ $("btnPlay").textContent="Play ▸"; currentFrame=clampFrame(video.currentTime*fps); refresh(); });
+  video.addEventListener("seeked", ()=>{ seeking=false; if(video.paused){ currentFrame=clampFrame(video.currentTime*fps); refresh(); } });
+
+  // ---------- load ----------
+  function loadFile(file){
+    if(!file) return;
+    videoName = file.name;
+    filenameEl.textContent = file.name;
+    const url = URL.createObjectURL(file);
+    video.src = url;
+    video.addEventListener("loadedmetadata", ()=>{
+      fps = parseFloat(fpsInput.value)||30;
+      frameCount = Math.max(1, Math.round(video.duration * fps));
+      boundaries=[]; history=[]; future=[]; currentFrame=0;
+      drop.classList.add("hidden"); editor.classList.remove("hidden");
+      gotoFrame(0); refresh();
+    }, {once:true});
+  }
+
+  // recompute frameCount if fps changed after load (labels are in frame space, so
+  // we keep frame indices but re-derive total; user should set fps before labeling)
+  fpsInput.addEventListener("change", ()=>{
+    const newFps = parseFloat(fpsInput.value)||30;
+    if(video.duration){
+      fps=newFps; frameCount=Math.max(1, Math.round(video.duration*fps));
+      currentFrame=clampFrame(currentFrame); refresh();
+    }
+  });
+
+  // ---------- events ----------
+  $("btnChoose").onclick = ()=>fileInput.click();
+  $("btnOpen").onclick   = ()=>fileInput.click();
+  fileInput.onchange = e=>loadFile(e.target.files[0]);
+
+  ;["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag");}));
+  ;["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag");}));
+  drop.addEventListener("drop", e=>{ const f=e.dataTransfer.files[0]; if(f) loadFile(f); });
+  // allow dropping a new video anywhere in the window after the first load
+  window.addEventListener("dragover", e=>e.preventDefault());
+  window.addEventListener("drop", e=>{
+    e.preventDefault();
+    const f=e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f && f.type.startsWith("video/")) loadFile(f);
+  });
+
+  $("btnStepB").onclick=()=>step(-1);
+  $("btnStepF").onclick=()=>step(1);
+  $("btnPlay").onclick=togglePlay;
+  $("btnNon").onclick=()=>placeBoundary(currentFrame,NON);
+  $("btnPlayLbl").onclick=()=>placeBoundary(currentFrame,PLAY);
+  btnUndo.onclick=undo; btnRedo.onclick=redo; btnClear.onclick=clearAll;
+
+  // timeline click / drag to seek
+  function seekFromEvent(e){
+    const rect=tl.getBoundingClientRect();
+    const x=Math.max(0,Math.min(rect.width, e.clientX-rect.left));
+    gotoFrame(Math.round(x/rect.width*(frameCount-1)));
+  }
+  let scrubbing=false;
+  tl.addEventListener("pointerdown", e=>{ scrubbing=true; tl.setPointerCapture(e.pointerId); seekFromEvent(e); });
+  tl.addEventListener("pointermove", e=>{ if(scrubbing) seekFromEvent(e); });
+  tl.addEventListener("pointerup",   ()=>{ scrubbing=false; });
+
+  window.addEventListener("resize", ()=>{ if(!editor.classList.contains("hidden")) drawTimeline(); });
+
+  // keyboard
+  window.addEventListener("keydown", e=>{
+    if(editor.classList.contains("hidden")) return;
+    if(e.target.tagName==="INPUT") return;
+    const meta = e.metaKey||e.ctrlKey;
+    if(meta && e.key.toLowerCase()==="z"){ e.preventDefault(); e.shiftKey?redo():undo(); return; }
+    if(meta && e.key.toLowerCase()==="y"){ e.preventDefault(); redo(); return; }
+    switch(e.key){
+      case "ArrowRight": e.preventDefault(); placeBoundary(currentFrame,PLAY); break;
+      case "ArrowLeft":  e.preventDefault(); placeBoundary(currentFrame,NON);  break;
+      case ",":          e.preventDefault(); step(e.shiftKey?-10:-1); break;
+      case ".":          e.preventDefault(); step(e.shiftKey?10:1);  break;
+      case "[":          e.preventDefault(); jumpMark(-1); break;
+      case "]":          e.preventDefault(); jumpMark(1);  break;
+      case " ":          e.preventDefault(); togglePlay(); break;
+    }
+  });
+
+  // ---------- export ----------
+  function buildPerFrame(){
+    const arr = new Array(frameCount);
+    let bi=-1;
+    for(let f=0; f<frameCount; f++){
+      while(bi+1<boundaries.length && boundaries[bi+1].frame<=f) bi++;
+      const label = bi<0 ? null : boundaries[bi].label;
+      arr[f] = label===PLAY?1 : label===NON?0 : -1; // 1 play, 0 non-play, -1 unlabeled
+    }
+    return arr;
+  }
+  function buildSegments(){
+    const segs=[];
+    if(!boundaries.length) return segs;
+    for(let i=0;i<boundaries.length;i++){
+      const start=boundaries[i].frame;
+      const end = (i+1<boundaries.length ? boundaries[i+1].frame : frameCount) - 1;
+      segs.push({
+        label: boundaries[i].label,
+        start_frame: start, end_frame: end,
+        start_time: +(start/fps).toFixed(3), end_time: +((end+1)/fps).toFixed(3)
+      });
+    }
+    return segs;
+  }
+  function download(name, text, type){
+    const blob=new Blob([text],{type});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  }
+  function exportAll(){
+    const base = videoName.replace(/\.[^.]+$/,"");
+    const perFrame = buildPerFrame();
+    const payload = {
+      schema: "play-labeler/v1",
+      video: videoName,
+      fps: fps,
+      frame_count: frameCount,
+      duration: +(video.duration||0).toFixed(3),
+      label_map: { "1":"play", "0":"nonplay", "-1":"unlabeled" },
+      created_utc: null,
+      segments: buildSegments(),
+      frame_labels: perFrame       // index = frame number, value in {1,0,-1}
+    };
+    download(base+".labels.json", JSON.stringify(payload,null,2), "application/json");
+    // also a flat CSV for quick loading
+    let csv="frame,time_sec,label\n";
+    for(let f=0; f<frameCount; f++){
+      const v=perFrame[f];
+      csv += f+","+(f/fps).toFixed(3)+","+(v===1?"play":v===0?"nonplay":"unlabeled")+"\n";
+    }
+    download(base+".labels.csv", csv, "text/csv");
+  }
+  btnExport.onclick=exportAll;
+
+  $("foot").textContent = "space play · ← non-play · → in play";
+})();
+</script>
+</body>
+</html>

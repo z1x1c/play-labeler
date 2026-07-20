@@ -1,0 +1,13 @@
+# exports & local media
+*.labels.json
+*.labels.csv
+*.mp4
+*.mov
+*.mkv
+*.webm
+
+# os / editor
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
