@@ -138,6 +138,7 @@
   .legend .sw.play{background:var(--play)}
   .legend .sw.nonplay{background:var(--nonplay)}
   .legend .sw.unlabeled{background:var(--unlabeled)}
+  .legend .sw.serve{background:#ff9500;border-color:#ff9500}
   .legend .spacer{flex:1}
   .legend kbd{font:inherit;font-size:11px;background:var(--kbd);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
 
@@ -148,6 +149,9 @@
   .lab-btn.play{background:var(--ink);border-color:var(--ink);color:var(--bg)}
   .lab-btn.play:hover{opacity:.88}
   .lab-btn.nonplay{background:var(--btn-bg)}
+  .lab-btn.serve{background:#ff9500;border-color:#ff9500;color:#fff}
+  .lab-btn.serve:hover{opacity:.88}
+  .lab-btn.serve.on{background:#c76b00;border-color:#c76b00}
   .controls .spacer{flex:1}
   .fps{display:flex;align-items:center;gap:7px;color:var(--ink-2);font-size:13px}
   .fps input{width:58px;padding:6px 8px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px;text-align:right;background:var(--btn-bg);color:var(--ink)}
@@ -179,6 +183,7 @@
   <button class="btn ghost" id="btnClear" disabled>Clear</button>
   <button class="btn" id="btnOpen" title="Open a different video">Open…</button>
   <button class="btn primary" id="btnExport" disabled>Export</button>
+  <button class="btn ghost" id="btnCsv" disabled title="Also download a flat CSV">⇩ csv</button>
 </header>
 
 <main>
@@ -206,6 +211,8 @@
       <span>Current label: <b id="rLabel">—</b></span>
       <span class="sep"></span>
       <span><b id="rCoverage">0%</b> labeled</span>
+      <span class="sep"></span>
+      <span><b id="rServes">0</b> serves</span>
     </div>
 
     <div class="tl-wrap">
@@ -214,8 +221,9 @@
         <span><span class="sw play"></span>In play</span>
         <span><span class="sw nonplay"></span>Non-play</span>
         <span><span class="sw unlabeled"></span>Unlabeled</span>
+        <span><span class="sw serve"></span>Serve</span>
         <span class="spacer"></span>
-        <span>Click to seek · hover for a preview · drag a mark to move it · <kbd>[</kbd> <kbd>]</kbd> jump between marks</span>
+        <span>Click to seek · hover for a preview · drag a mark or serve to move it · <kbd>[</kbd> <kbd>]</kbd> jump between marks</span>
       </div>
     </div>
 
@@ -228,6 +236,9 @@
       <div class="group">
         <button class="btn lab-btn nonplay" id="btnNon" title="Mark NON-PLAY from here (←)">← Non-play</button>
         <button class="btn lab-btn play" id="btnPlayLbl" title="Mark IN-PLAY from here (→)">In play →</button>
+      </div>
+      <div class="group">
+        <button class="btn lab-btn serve" id="btnServe" title="Mark / remove a serve at this exact frame (S)">⑆ Serve</button>
       </div>
       <div class="group" title="Playback speed">
         <button class="btn spd" data-s="0.25">¼×</button>
@@ -245,6 +256,7 @@
     <div class="hint">
       <b>Label live while it plays:</b> hit <kbd>Space</kbd> to play, then tap <kbd>→</kbd> the moment a rally starts and <kbd>←</kbd> the moment it ends. A label fills forward until the next mark.
       When paused, placing a label auto-steps to the next frame.
+      &nbsp;·&nbsp; <b>Mark a serve</b> at the exact contact frame with <kbd>S</kbd> (press again to remove) — it's an instant, stored by timestamp.
       &nbsp;·&nbsp; Step frames <kbd>,</kbd> <kbd>.</kbd> (hold <kbd>⇧</kbd> = ±10) &nbsp;·&nbsp; <kbd>↓</kbd> back to last labeled frame &nbsp;·&nbsp; Undo <kbd>⌘Z</kbd> / Redo <kbd>⇧⌘Z</kbd>
     </div>
   </section>
@@ -263,11 +275,12 @@
   const $ = id => document.getElementById(id);
   const drop=$("drop"), editor=$("editor"), fileInput=$("file"), video=$("video");
   const badge=$("badge"), tl=$("tl"), cv=$("tlCanvas"), ctx=cv.getContext("2d");
-  const rFrame=$("rFrame"), rTotal=$("rTotal"), rTime=$("rTime"), rLabel=$("rLabel"), rCoverage=$("rCoverage");
+  const rFrame=$("rFrame"), rTotal=$("rTotal"), rTime=$("rTime"), rLabel=$("rLabel"), rCoverage=$("rCoverage"), rServes=$("rServes");
   const fpsInput=$("fps"), filenameEl=$("filename");
-  const btnExport=$("btnExport"), btnUndo=$("btnUndo"), btnRedo=$("btnRedo"), btnClear=$("btnClear");
+  const btnExport=$("btnExport"), btnCsv=$("btnCsv"), btnUndo=$("btnUndo"), btnRedo=$("btnRedo"), btnClear=$("btnClear"), btnServe=$("btnServe");
 
   const PLAY="play", NON="nonplay";
+  const SERVE_C="#ff9500";   // serve marker color (matches the button + legend)
 
   // ---------- state ----------
   let fps = 30;
@@ -277,11 +290,18 @@
   // boundaries: sorted list of {frame, label}. Effective label at f = label of the
   // last boundary with boundary.frame <= f; frames before the first boundary = unlabeled.
   let boundaries = [];
-  let history = [];   // past snapshots (JSON strings of boundaries)
+  // serve events: instantaneous rally starts. Stored by {time} in SECONDS so they
+  // stay correct across fps changes / mismatched sources (a bare frame index would
+  // be wrong if the labeling fps differs from the video's real fps). The frame is
+  // always derived on the fly as round(time * fps).
+  let serves = [];
+  let history = [];   // past snapshots (JSON strings of {boundaries, serves})
   let future = [];    // redo stack
 
   // ---------- helpers ----------
   const clampFrame = f => Math.max(0, Math.min(frameCount ? frameCount - 1 : 0, Math.round(f)));
+  const serveFrame = sv => clampFrame(Math.round(sv.time * fps));
+  const serveIndexAtFrame = f => serves.findIndex(sv => serveFrame(sv) === f);
 
   function fmtTime(sec){
     if(!isFinite(sec)) sec = 0;
@@ -306,7 +326,10 @@
   }
 
   // ---------- edits (history-tracked) ----------
-  function snapshot(){ history.push(JSON.stringify(boundaries)); if(history.length>500) history.shift(); future.length=0; }
+  // one undo entry captures BOTH boundaries and serves so edits to either are reversible
+  const stateStr = () => JSON.stringify({ b: boundaries, s: serves });
+  function loadState(str){ const o = JSON.parse(str); boundaries = o.b || []; serves = o.s || []; }
+  function snapshot(){ history.push(stateStr()); if(history.length>500) history.shift(); future.length=0; }
 
   function normalize(){
     boundaries.sort((a,b)=>a.frame-b.frame);
@@ -333,9 +356,21 @@
     if(video.paused) step(1);
   }
 
-  function undo(){ if(!history.length) return; future.push(JSON.stringify(boundaries)); boundaries=JSON.parse(history.pop()); refresh(); }
-  function redo(){ if(!future.length) return; history.push(JSON.stringify(boundaries)); boundaries=JSON.parse(future.pop()); refresh(); }
-  function clearAll(){ if(!boundaries.length) return; snapshot(); boundaries=[]; refresh(); }
+  function undo(){ if(!history.length) return; future.push(stateStr()); loadState(history.pop()); refresh(); }
+  function redo(){ if(!future.length) return; history.push(stateStr()); loadState(future.pop()); refresh(); }
+  function clearAll(){ if(!boundaries.length && !serves.length) return; snapshot(); boundaries=[]; serves=[]; refresh(); }
+
+  // toggle a serve at the current frame (add if none here, remove if one already is).
+  // Unlike placeBoundary it does NOT auto-step — a serve is a precise instant.
+  function toggleServe(){
+    if(!frameCount) return;
+    snapshot();
+    const i = serveIndexAtFrame(currentFrame);
+    if(i>=0) serves.splice(i,1);
+    else serves.push({ time: currentFrame/fps });
+    serves.sort((a,b)=>a.time-b.time);
+    refresh();
+  }
 
   // ---------- navigation ----------
   let seeking=false;
@@ -363,8 +398,10 @@
   const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
   let hoverFrame=null, hoverMark=null, dragMark=null;   // hoverMark/dragMark hold a boundary object
+  let hoverServe=null, dragServe=null;                  // ...hold a serve object
 
   function drawTimeline(){
+    if(!ctx) return;   // canvas unavailable (e.g. headless test env)
     const rect = tl.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     const W = Math.max(1, Math.round(rect.width));
@@ -403,8 +440,17 @@
       ctx.fillRect(x-(w>>1)-2, H-5, w+4, 5);
     }
 
+    // serve markers — instantaneous rally starts: full-height tick + a top triangle
+    for(const sv of serves){
+      const x = Math.round(serveFrame(sv) / frameCount * W);
+      const hot = sv===hoverServe || sv===dragServe;
+      ctx.fillStyle = hot ? accC : SERVE_C;
+      ctx.fillRect(x-1, 0, 2, H);
+      ctx.beginPath(); ctx.moveTo(x-5,0); ctx.lineTo(x+5,0); ctx.lineTo(x,9); ctx.closePath(); ctx.fill();
+    }
+
     // hover position ghost line
-    if(hoverFrame!=null && !dragMark && !hoverMark){
+    if(hoverFrame!=null && !dragMark && !hoverMark && !dragServe && !hoverServe){
       const hx = frameCount>1 ? hoverFrame/(frameCount-1)*W : 0;
       ctx.fillStyle = "rgba(10,132,255,.45)";
       ctx.fillRect(Math.round(hx), 0, 1, H);
@@ -436,12 +482,45 @@
     const l = labelAt(currentFrame);
     rLabel.textContent = l===PLAY?"In play":l===NON?"Non-play":"—";
     rCoverage.textContent = coverage()+"%";
+    rServes.textContent = serves.length;
     updateBadge();
     drawTimeline();
+    const has = boundaries.length || serves.length;
     btnUndo.disabled = !history.length;
     btnRedo.disabled = !future.length;
-    btnClear.disabled = !boundaries.length;
-    btnExport.disabled = !boundaries.length;
+    btnClear.disabled = !has;
+    btnExport.disabled = !has;
+    btnCsv.disabled = !has;
+    btnServe.classList.toggle("on", serveIndexAtFrame(currentFrame)>=0);
+    autosave();
+  }
+
+  // ---------- autosave: survive an accidental reload / tab close ----------
+  // Labels live only in memory, so a refresh used to wipe everything. Persist the
+  // boundaries to localStorage keyed by the video's name so a reload restores them.
+  function saveKey(){ return "playlabeler:labels:"+videoName; }
+  let autosaveTimer=null;
+  function autosave(){
+    if(!videoName || videoName==="video") return;
+    if(!boundaries.length && !serves.length) return;   // never clobber a saved set with an empty one
+    clearTimeout(autosaveTimer);
+    autosaveTimer=setTimeout(()=>{
+      try{ localStorage.setItem(saveKey(), JSON.stringify({fps, frameCount, boundaries, serves})); }catch(e){}
+    }, 300);
+  }
+  function tryRestore(){
+    try{
+      const raw=localStorage.getItem(saveKey());
+      if(!raw) return;
+      const saved=JSON.parse(raw);
+      const hasSaved = saved && ((Array.isArray(saved.boundaries) && saved.boundaries.length) ||
+                                 (Array.isArray(saved.serves) && saved.serves.length));
+      if(hasSaved && confirm("Found saved labels for “"+videoName+"”. Restore them?")){
+        boundaries = Array.isArray(saved.boundaries) ? saved.boundaries : [];
+        serves = Array.isArray(saved.serves) ? saved.serves : [];
+        normalize();
+      }
+    }catch(e){}
   }
 
   // ---------- playback ----------
@@ -472,7 +551,8 @@
     video.addEventListener("loadedmetadata", ()=>{
       fps = parseFloat(fpsInput.value)||30;
       frameCount = Math.max(1, Math.round(video.duration * fps));
-      boundaries=[]; history=[]; future=[]; currentFrame=0;
+      boundaries=[]; serves=[]; history=[]; future=[]; currentFrame=0;
+      tryRestore();
       drop.classList.add("hidden"); editor.classList.remove("hidden");
       gotoFrame(0); refresh();
     }, {once:true});
@@ -513,6 +593,7 @@
   });
   $("btnNon").onclick=()=>placeBoundary(currentFrame,NON);
   $("btnPlayLbl").onclick=()=>placeBoundary(currentFrame,PLAY);
+  btnServe.onclick=toggleServe;
   btnUndo.onclick=undo; btnRedo.onclick=redo; btnClear.onclick=clearAll;
 
   // ---------- timeline: seek, marker select/drag, hover preview ----------
@@ -529,6 +610,18 @@
     for(const b of boundaries){
       const d=Math.abs(b.frame/frameCount*rect.width - x);
       if(d<bd){ bd=d; best=b; }
+    }
+    return best;
+  }
+  // serve marker near the pointer — only grabbable in the top band (where the
+  // triangle sits) so it doesn't fight with boundary handles / scrubbing
+  function serveNear(e){
+    const rect=tl.getBoundingClientRect();
+    if(e.clientY-rect.top > rect.height*0.55) return null;
+    const x=e.clientX-rect.left; let best=null, bd=8;
+    for(const sv of serves){
+      const d=Math.abs(serveFrame(sv)/frameCount*rect.width - x);
+      if(d<bd){ bd=d; best=sv; }
     }
     return best;
   }
@@ -558,13 +651,24 @@
   let scrubbing=false;
   tl.addEventListener("pointerdown", e=>{
     tl.setPointerCapture(e.pointerId);
+    const sv=serveNear(e);
+    if(sv){ dragServe=sv; dragMoved=false; gotoFrame(serveFrame(sv)); return; }  // serve takes priority in top band
     const m=markNear(e);
     if(m){ dragMark=m; dragMoved=false; gotoFrame(m.frame); }   // click selects the mark; drag moves it
     else { scrubbing=true; seekFromEvent(e); }
   });
   let dragMoved=false;
   tl.addEventListener("pointermove", e=>{
-    if(dragMark){
+    if(dragServe){
+      const f=frameFromEvent(e), nt=f/fps;
+      if(f!==serveFrame(dragServe)){
+        if(!dragMoved){ snapshot(); dragMoved=true; }
+        dragServe.time=nt;
+        serves.sort((a,b)=>a.time-b.time);
+        gotoFrame(f); refresh();
+      }
+    }
+    else if(dragMark){
       const f=frameFromEvent(e);
       if(f!==dragMark.frame){
         if(!dragMoved){ snapshot(); dragMoved=true; }
@@ -575,18 +679,20 @@
     }
     else if(scrubbing) seekFromEvent(e);
     else {
-      hoverMark=markNear(e);
-      tl.style.cursor=hoverMark?"ew-resize":"pointer";
+      hoverServe=serveNear(e);
+      hoverMark=hoverServe?null:markNear(e);
+      tl.style.cursor=(hoverServe||hoverMark)?"ew-resize":"pointer";
     }
     hoverFrame=frameFromEvent(e);
     showTip(e); drawTimeline();
   });
   tl.addEventListener("pointerup", ()=>{
+    if(dragServe){ dragServe=null; refresh(); }
     if(dragMark){ if(dragMoved) normalize(); dragMark=null; refresh(); }
     scrubbing=false;
   });
   tl.addEventListener("pointerleave", ()=>{
-    hoverFrame=null; hoverMark=null; hideTip(); drawTimeline();
+    hoverFrame=null; hoverMark=null; hoverServe=null; hideTip(); drawTimeline();
   });
 
   window.addEventListener("resize", ()=>{ if(!editor.classList.contains("hidden")) drawTimeline(); });
@@ -601,6 +707,7 @@
     switch(e.key){
       case "ArrowRight": e.preventDefault(); placeBoundary(currentFrame,PLAY); break;
       case "ArrowLeft":  e.preventDefault(); placeBoundary(currentFrame,NON);  break;
+      case "s": case "S": e.preventDefault(); toggleServe(); break;
       case "ArrowDown":  e.preventDefault(); jumpMark(-1); break;
       case ",":          e.preventDefault(); step(e.shiftKey?-10:-1); break;
       case ".":          e.preventDefault(); step(e.shiftKey?10:1);  break;
@@ -635,6 +742,15 @@
     }
     return segs;
   }
+  // serve events, sorted, exported timestamp-first (fps-independent). frame &
+  // labeled_fps are derived conveniences: frame = round(time * labeled_fps).
+  function buildServes(){
+    return serves.slice().sort((a,b)=>a.time-b.time).map(sv=>({
+      time: +sv.time.toFixed(3),
+      frame: serveFrame(sv),
+      labeled_fps: fps
+    }));
+  }
   function download(name, text, type){
     const blob=new Blob([text],{type});
     const a=document.createElement("a");
@@ -642,11 +758,9 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
   }
-  function exportAll(){
-    const base = videoName.replace(/\.[^.]+$/,"");
-    const perFrame = buildPerFrame();
-    const payload = {
-      schema: "play-labeler/v1",
+  function buildPayload(){
+    return {
+      schema: "play-labeler/v2",
       video: videoName,
       fps: fps,
       frame_count: frameCount,
@@ -654,18 +768,41 @@
       label_map: { "1":"play", "0":"nonplay", "-1":"unlabeled" },
       created_utc: null,
       segments: buildSegments(),
-      frame_labels: perFrame       // index = frame number, value in {1,0,-1}
+      frame_labels: buildPerFrame(),  // index = frame number, value in {1,0,-1}
+      serve_events: buildServes()     // instantaneous rally starts, stored by timestamp
     };
-    download(base+".labels.json", JSON.stringify(payload,null,2), "application/json");
-    // also a flat CSV for quick loading
-    let csv="frame,time_sec,label\n";
-    for(let f=0; f<frameCount; f++){
-      const v=perFrame[f];
-      csv += f+","+(f/fps).toFixed(3)+","+(v===1?"play":v===0?"nonplay":"unlabeled")+"\n";
-    }
-    download(base+".labels.csv", csv, "text/csv");
   }
-  btnExport.onclick=exportAll;
+  // Single JSON download. Firing two downloads (json + csv) trips the browser's
+  // "block automatic multiple downloads" guard, which silently kills every export
+  // after the first — so we emit ONE file. The JSON already holds everything the
+  // NN needs; CSV is available via the small ⇩ csv link if wanted.
+  function exportJSON(){
+    try{
+      const base = videoName.replace(/\.[^.]+$/,"");
+      download(base+".labels.json", JSON.stringify(buildPayload(),null,2), "application/json");
+    }catch(err){
+      alert("Export failed: "+err.message+"\nOpen the console (F12) for details.");
+      console.error("export failed", err);
+    }
+  }
+  function exportCSV(){
+    try{
+      const base = videoName.replace(/\.[^.]+$/,"");
+      const perFrame = buildPerFrame();
+      const serveFrames = new Set(serves.map(serveFrame));
+      let csv="frame,time_sec,label,serve\n";
+      for(let f=0; f<frameCount; f++){
+        const v=perFrame[f];
+        csv += f+","+(f/fps).toFixed(3)+","+(v===1?"play":v===0?"nonplay":"unlabeled")+","+(serveFrames.has(f)?1:0)+"\n";
+      }
+      download(base+".labels.csv", csv, "text/csv");
+    }catch(err){
+      alert("CSV export failed: "+err.message);
+      console.error("csv export failed", err);
+    }
+  }
+  btnExport.onclick=exportJSON;
+  $("btnCsv").onclick=exportCSV;
 
   // ---------- theme ----------
   function applyTheme(t){
@@ -682,7 +819,27 @@
   try{ theme=localStorage.getItem("playlabeler:theme"); }catch(e){}
   applyTheme(theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 
-  $("foot").textContent = "space play · ← non-play · → in play";
+  $("foot").textContent = "space play · ← non-play · → in play · s serve";
+
+  // ---------- test hook (inert unless the URL carries ?pltest) ----------
+  // Lets a headless harness drive the pure state/export logic without a real video.
+  try{
+    if(typeof location!=="undefined" && /[?&]pltest\b/.test(location.search)){
+      window.__PL_TEST__ = {
+        set(s){
+          if(s.fps!=null) fps=s.fps;
+          if(s.frameCount!=null) frameCount=s.frameCount;
+          if(s.currentFrame!=null) currentFrame=s.currentFrame;
+          if(s.boundaries) boundaries=s.boundaries;
+          if(s.serves) serves=s.serves;
+          if(s.videoName!=null) videoName=s.videoName;
+        },
+        toggleServe, buildPayload, serveFrame, undo, redo, clearAll, refresh, drawTimeline,
+        get serves(){ return serves; },
+        get boundaries(){ return boundaries; }
+      };
+    }
+  }catch(e){}
 })();
 </script>
 </body>
