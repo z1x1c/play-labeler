@@ -501,6 +501,7 @@
   // ---------- serve side (per-rally) ----------
   // A "rally" is an in-play segment. Each carries at most one serve_side.
   function getRallies(){
+    if(_ralliesCache) return _ralliesCache;
     const out=[];
     for(let i=0;i<boundaries.length;i++){
       if(boundaries[i].label!==PLAY) continue;
@@ -508,6 +509,7 @@
       const end=(i+1<boundaries.length ? boundaries[i+1].frame : frameCount) - 1;
       out.push({ start, end, side: serveSides[start] || null, winner: winners[start] || null });
     }
+    _ralliesCache=out;
     return out;
   }
   // the final rally has no next serve, so its winner can't be reconstructed — it's the
@@ -537,6 +539,7 @@
     snapshot();
     if(side==null) delete serveSides[start];
     else serveSides[start]=side;
+    invalidateRallies();   // the auto-advance below reads rallies with the new side
     if(side!=null){
       const rallies=getRallies();
       const idx=rallies.findIndex(r=>r.start===start);
@@ -574,6 +577,17 @@
 
   // ---------- rendering ----------
   const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // Cache the timeline colors. getComputedStyle forces a style recalc, and drawTimeline
+  // runs every video frame during playback — reading 4 vars per draw was a real hit.
+  // Refreshed only when the theme actually changes (readColors()).
+  let COL={play:"#111",non:"#fff",unl:"#eee",acc:"#0a84ff"};
+  function readColors(){ COL={play:cssVar("--play"),non:cssVar("--nonplay"),unl:cssVar("--unlabeled"),acc:cssVar("--accent")}; }
+
+  // getRallies() is called 3×/frame during playback and several times per refresh, and
+  // it allocates a fresh array each call. Memoize it; the rally structure only changes
+  // on an edit, and every edit path funnels through refresh(), which invalidates below.
+  let _ralliesCache=null;
+  function invalidateRallies(){ _ralliesCache=null; }
 
   let hoverFrame=null, hoverMark=null, dragMark=null;   // hoverMark/dragMark hold a boundary object
   let hoverServe=null, dragServe=null;                  // ...hold a serve object
@@ -590,17 +604,18 @@
     ctx.clearRect(0,0,W,H);
 
     if(!frameCount){ return; }
-    const playC=cssVar("--play"), nonC=cssVar("--nonplay"), unlC=cssVar("--unlabeled"), accC=cssVar("--accent");
+    const playC=COL.play, nonC=COL.non, unlC=COL.unl, accC=COL.acc;
     const dark=document.documentElement.classList.contains("dark");
 
-    // paint per-column effective label
-    let bi = -1;              // current boundary index while scanning left→right
-    for(let x=0; x<W; x++){
-      const f = Math.floor(x / W * frameCount);
-      while(bi+1 < boundaries.length && boundaries[bi+1].frame<=f){ bi++; }
-      const label = bi<0 ? null : boundaries[bi].label;
-      ctx.fillStyle = label===PLAY ? playC : label===NON ? nonC : unlC;
-      ctx.fillRect(x,0,1,H);
+    // paint one rect per label band (a few dozen) instead of one per pixel column.
+    // start unlabeled, then paint each boundary's run up to the next boundary.
+    ctx.fillStyle=unlC; ctx.fillRect(0,0,W,H);
+    for(let i=0;i<boundaries.length;i++){
+      const s=boundaries[i].frame;
+      const e=(i+1<boundaries.length ? boundaries[i+1].frame : frameCount);
+      const x0=Math.floor(s/frameCount*W), x1=Math.ceil(e/frameCount*W);
+      ctx.fillStyle = boundaries[i].label===PLAY ? playC : nonC;
+      ctx.fillRect(x0,0,x1-x0,H);
     }
     // subtle separator so bands matching the panel color still read
     ctx.strokeStyle=dark?"rgba(255,255,255,.08)":"rgba(0,0,0,.06)"; ctx.strokeRect(.5,.5,W-1,H-1);
@@ -715,9 +730,18 @@
                           : side==="bottom" ? "▼ Bottom serve"
                           : "Serve? T / B";
   }
+  let _rallyListSig=null;
   function renderRallyList(){
     const rallies=getRallies();
     const curStart=currentRallyStart();
+    // Everything this function renders is a pure function of the rallies + which one the
+    // playhead is in. Rebuilding hundreds of rows on every keypress/seek was the labeling
+    // lag on long games — skip it entirely when that signature is unchanged.
+    let sig=curStart+"|"+frameCount;
+    for(const r of rallies) sig+=";"+r.start+":"+r.end+":"+r.side+":"+r.winner;
+    if(sig===_rallyListSig) return;
+    _rallyListSig=sig;
+
     const curSide=curStart!=null ? (serveSides[curStart]||null) : null;
     $("ssRemaining").textContent = rallies.filter(r=>!r.side).length;
     $("ssTotal").textContent = rallies.length;
@@ -772,6 +796,7 @@
   }
 
   function refresh(){
+    invalidateRallies();   // every edit path funnels here; rebuild the rally cache once
     rFrame.textContent = currentFrame;
     rTotal.textContent = frameCount;
     rTime.textContent = fmtTime(currentFrame/fps);
@@ -1140,6 +1165,7 @@
   function applyTheme(t){
     document.documentElement.classList.toggle("dark", t==="dark");
     $("btnTheme").textContent = t==="dark" ? "☀︎ Light" : "☾ Dark";
+    readColors();   // timeline colors are cached; refresh them when the theme flips
     if(!editor.classList.contains("hidden")) drawTimeline();
   }
   $("btnTheme").onclick = ()=>{
