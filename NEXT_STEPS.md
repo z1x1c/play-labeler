@@ -51,11 +51,33 @@ python3 our_model/infer_our_model.py                # -> outputs/output1_our_mod
 python3 vb_model/infer_vb.py --video sample-video.mp4
 ```
 
+## Video prep — do this before labeling (fixes the frame-step lag)
+Frame-stepping in the labeler feels slow because source videos have **sparse
+keyframes** (~8s apart), so each backward step re-decodes a whole GOP. It's
+decode-bound — no app setting fixes it. Make a **dense-keyframe 540p proxy** and
+label that; serves are stored by **timestamp**, so labels map back to the original.
+
+```bash
+# macOS/Linux
+ffmpeg -i game.mp4 -vf scale=-2:540 -c:v libx264 -preset veryfast \
+  -crf 26 -g 15 -keyint_min 15 -sc_threshold 0 -an game.proxy.mp4
+```
+```bat
+:: Windows cmd — download + proxy in one line (replace URL)
+yt-dlp -f "bv*+ba/b" --merge-output-format mp4 -o "game.mp4" "URL" && ffmpeg -i "game.mp4" -vf scale=-2:540 -c:v libx264 -preset veryfast -crf 26 -g 15 -keyint_min 15 -sc_threshold 0 -an "game.proxy.mp4"
+```
+`-g 15` = keyframe every 0.5s (worst-case back-step decodes ≤14 small frames); the
+proxy is usually *smaller* than the source. For zero-latency stepping use
+`-g 1 -keyint_min 1` (all-intra, ~5× size). Label the proxy, keep the original only
+if you need full res later.
+
 ## Gotchas to remember
 - **Truncated training videos:** the 3 gabriel/PANAMBA mp4s only decode ~1/3 of their
   length (corrupt mid-stream). To get more play/nonplay data, re-obtain them intact.
 - **fps mismatch:** the toko clip is **59.94 fps but labeled at 30** — always map
   labels by **timestamp**, never bare frame index (both models already do this).
+- **Frame-stepping lag = sparse keyframes, not the app.** Label a dense-keyframe
+  proxy (see *Video prep* above), not the raw download.
 - **Venue shift is real:** models trained on one gym drop hard on a new one. More
   venues > more minutes of one venue.
 - **Model dirs are local, not in git** (`our_model/`, `vb_model/`, `serve_model/`,
