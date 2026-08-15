@@ -554,12 +554,19 @@
   function selectRally(start){ gotoFrame(start); refresh(); }
 
   // ---------- navigation ----------
-  let seeking=false;
+  let seeking=false, pendingSeekT=null;
   function gotoFrame(f){
     currentFrame = clampFrame(f);
     if(!video.duration) return;
-    seeking=true;
-    video.currentTime = Math.min(video.duration, (currentFrame + 0.0001)/fps);
+    const t = Math.min(video.duration, (currentFrame + 0.0001)/fps);
+    // Coalesce seeks. A browser "accurate seek" on a long clip is slow, and setting
+    // currentTime again mid-seek CANCELS the in-flight one — so mashing the step key
+    // thrashed and never settled (the "freeze"). While a seek is running, just remember
+    // the latest target; the seeked handler fires it once the current one lands.
+    if(seeking){ pendingSeekT = t; return; }
+    seeking = true;
+    if(PERF) _seekT0=performance.now();
+    video.currentTime = t;
   }
   function step(n){ gotoFrame(currentFrame + n); }
 
@@ -589,71 +596,109 @@
   let _ralliesCache=null;
   function invalidateRallies(){ _ralliesCache=null; }
 
+  // The timeline splits into a STATIC layer (bands, marks, serves, rally discs — only
+  // changes on an edit) and a DYNAMIC overlay (playhead, hover ghost, hot/selected
+  // highlight — change every frame/mouse-move). frameLoop redraws the timeline on every
+  // video frame; without this split it re-ran every mark/serve/disc path+fillText each
+  // frame, a cost that grew with label count. Now the static layer is cached to an
+  // offscreen canvas and per-frame we just blit it and stroke the playhead → O(1)/frame.
+  const scv=document.createElement("canvas"), sctx=scv.getContext("2d");
+  let staticDirty=true;
+  function markDirty(){ invalidateRallies(); staticDirty=true; }   // any edit → both caches stale
+
+  // opt-in perf probe: open with ?perf to log seek latency + draw time to the console.
+  // Settles whether the lag is decode-bound (seek) or paint-bound (draw).
+  const PERF = (typeof location!=="undefined") && /[?&]perf\b/.test(location.search);
+  const perf={seek:[],draw:[],
+    _avg:a=>a.length?(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1):"–",
+    _max:a=>a.length?Math.max(...a).toFixed(0):"–",
+    log(){ console.log("[perf] seek avg "+this._avg(this.seek)+"ms max "+this._max(this.seek)+" (n="+this.seek.length+") · draw avg "+this._avg(this.draw)+"ms max "+this._max(this.draw)+" (n="+this.draw.length+")"); this.seek=[]; this.draw=[]; }};
+  if(PERF) setInterval(()=>perf.log(), 2000);
+  let _seekT0=0;
+
   let hoverFrame=null, hoverMark=null, dragMark=null;   // hoverMark/dragMark hold a boundary object
   let hoverServe=null, dragServe=null;                  // ...hold a serve object
   let selMark=null, selServe=null;                      // click-selected mark / serve (Backspace deletes it)
 
-  function drawTimeline(){
-    if(!ctx) return;   // canvas unavailable (e.g. headless test env)
-    const rect = tl.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    const W = Math.max(1, Math.round(rect.width));
-    const H = Math.max(1, Math.round(rect.height));
-    if(cv.width!==W*dpr || cv.height!==H*dpr){ cv.width=W*dpr; cv.height=H*dpr; }
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,W,H);
+  // shared glyph drawers so the static (base color) and overlay (hot/accent) layers
+  // paint identical marks/serves — the overlay's wider accent glyph fully covers the base.
+  function drawMarkGlyph(g, b, W, H, body, cap, wdt){
+    const x = Math.round(b.frame / frameCount * W);
+    g.fillStyle=body; g.fillRect(x-(wdt>>1), 0, wdt, H);
+    g.fillStyle=cap;  g.fillRect(x-(wdt>>1)-2, 0, wdt+4, 5); g.fillRect(x-(wdt>>1)-2, H-5, wdt+4, 5);
+  }
+  function drawServeGlyph(g, sv, W, H, color){
+    const x = Math.round(serveFrame(sv) / frameCount * W);
+    g.fillStyle=color; g.fillRect(x-1, 0, 2, H);
+    g.beginPath(); g.moveTo(x-5,0); g.lineTo(x+5,0); g.lineTo(x,9); g.closePath(); g.fill();
+  }
 
-    if(!frameCount){ return; }
-    const playC=COL.play, nonC=COL.non, unlC=COL.unl, accC=COL.acc;
+  // rebuild the cached static layer (bands + marks + serves + discs) into the offscreen
+  // canvas. Called only when the labels/size/theme change — never per playback frame.
+  function rebuildStatic(W, H, dpr){
+    if(scv.width!==cv.width || scv.height!==cv.height){ scv.width=cv.width; scv.height=cv.height; }
+    sctx.setTransform(dpr,0,0,dpr,0,0);
+    sctx.clearRect(0,0,W,H);
+    const playC=COL.play, nonC=COL.non, unlC=COL.unl;
     const dark=document.documentElement.classList.contains("dark");
 
-    // paint one rect per label band (a few dozen) instead of one per pixel column.
-    // start unlabeled, then paint each boundary's run up to the next boundary.
-    ctx.fillStyle=unlC; ctx.fillRect(0,0,W,H);
+    // one rect per label band
+    sctx.fillStyle=unlC; sctx.fillRect(0,0,W,H);
     for(let i=0;i<boundaries.length;i++){
       const s=boundaries[i].frame;
       const e=(i+1<boundaries.length ? boundaries[i+1].frame : frameCount);
       const x0=Math.floor(s/frameCount*W), x1=Math.ceil(e/frameCount*W);
-      ctx.fillStyle = boundaries[i].label===PLAY ? playC : nonC;
-      ctx.fillRect(x0,0,x1-x0,H);
+      sctx.fillStyle = boundaries[i].label===PLAY ? playC : nonC;
+      sctx.fillRect(x0,0,x1-x0,H);
     }
-    // subtle separator so bands matching the panel color still read
-    ctx.strokeStyle=dark?"rgba(255,255,255,.08)":"rgba(0,0,0,.06)"; ctx.strokeRect(.5,.5,W-1,H-1);
+    sctx.strokeStyle=dark?"rgba(255,255,255,.08)":"rgba(0,0,0,.06)"; sctx.strokeRect(.5,.5,W-1,H-1);
 
-    // boundary marks — grabbable handles: full-height line + caps top and bottom
+    // boundary marks (base color; hot ones are re-stamped in the overlay)
     for(const b of boundaries){
-      const x = Math.round(b.frame / frameCount * W);
-      const hot = b===hoverMark || b===dragMark || b===selMark;
-      const main = b.label===PLAY ? nonC : playC;       // contrast against own band
+      const main = b.label===PLAY ? nonC : playC;   // contrast against own band
       const cap  = b.label===PLAY ? playC : nonC;
-      const w = hot ? 5 : 3;
-      ctx.fillStyle = hot ? accC : main;
-      ctx.fillRect(x-(w>>1), 0, w, H);
-      ctx.fillStyle = hot ? accC : cap;
-      ctx.fillRect(x-(w>>1)-2, 0, w+4, 5);
-      ctx.fillRect(x-(w>>1)-2, H-5, w+4, 5);
+      drawMarkGlyph(sctx, b, W, H, main, cap, 3);
     }
+    // serve markers
+    for(const sv of serves) drawServeGlyph(sctx, sv, W, H, SERVE_C);
 
-    // serve markers — instantaneous rally starts: full-height tick + a top triangle
-    for(const sv of serves){
-      const x = Math.round(serveFrame(sv) / frameCount * W);
-      const hot = sv===hoverServe || sv===dragServe || sv===selServe;
-      ctx.fillStyle = hot ? accC : SERVE_C;
-      ctx.fillRect(x-1, 0, 2, H);
-      ctx.beginPath(); ctx.moveTo(x-5,0); ctx.lineTo(x+5,0); ctx.lineTo(x,9); ctx.closePath(); ctx.fill();
-    }
-
-    // per-rally serve-side letters — a T / B disc centered on each labeled rally
-    ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.font="800 11px -apple-system,system-ui,sans-serif";
+    // per-rally T/B discs
+    sctx.textAlign="center"; sctx.textBaseline="middle";
+    sctx.font="800 11px -apple-system,system-ui,sans-serif";
     for(const r of getRallies()){
       if(!r.side) continue;
       const cx=Math.round((r.start+r.end+1)/2 / frameCount * W);
-      ctx.fillStyle = r.side==="top" ? "#0a84ff" : "#2fb457";
-      ctx.beginPath(); ctx.arc(cx, H/2, 8, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle="#fff";
-      ctx.fillText(r.side==="top"?"T":"B", cx, H/2+0.5);
+      sctx.fillStyle = r.side==="top" ? "#0a84ff" : "#2fb457";
+      sctx.beginPath(); sctx.arc(cx, H/2, 8, 0, Math.PI*2); sctx.fill();
+      sctx.fillStyle="#fff";
+      sctx.fillText(r.side==="top"?"T":"B", cx, H/2+0.5);
     }
+  }
+
+  function drawTimeline(){
+    if(!ctx) return;   // canvas unavailable (e.g. headless test env)
+    const t0 = PERF ? performance.now() : 0;
+    const rect = tl.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.max(1, Math.round(rect.width));
+    const H = Math.max(1, Math.round(rect.height));
+    if(cv.width!==W*dpr || cv.height!==H*dpr){ cv.width=W*dpr; cv.height=H*dpr; staticDirty=true; }
+
+    if(!frameCount){ ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H); if(PERF) perf.draw.push(performance.now()-t0); return; }
+    const accC=COL.acc;
+
+    // (re)build the static layer only when something it depends on changed
+    if(staticDirty){ rebuildStatic(W,H,dpr); staticDirty=false; }
+
+    // blit the cached static layer 1:1 in device pixels, then draw the dynamic overlay
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.drawImage(scv,0,0);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    // hot/selected marks + serves — re-stamp in accent on top of their base glyphs
+    for(const b of [selMark, hoverMark, dragMark]) if(b) drawMarkGlyph(ctx, b, W, H, accC, accC, 5);
+    for(const sv of [selServe, hoverServe, dragServe]) if(sv) drawServeGlyph(ctx, sv, W, H, accC);
 
     // hover position ghost line
     if(hoverFrame!=null && !dragMark && !hoverMark && !dragServe && !hoverServe){
@@ -666,6 +711,8 @@
     const px = frameCount>1 ? currentFrame/(frameCount-1)*W : 0;
     ctx.fillStyle = accC || "#0a84ff";
     ctx.fillRect(Math.round(px)-1, 0, 2, H);
+
+    if(PERF) perf.draw.push(performance.now()-t0);
   }
 
   function updateBadge(){
@@ -796,7 +843,7 @@
   }
 
   function refresh(){
-    invalidateRallies();   // every edit path funnels here; rebuild the rally cache once
+    markDirty();   // every edit path funnels here; invalidate the rally + static caches
     rFrame.textContent = currentFrame;
     rTotal.textContent = frameCount;
     rTime.textContent = fmtTime(currentFrame/fps);
@@ -864,7 +911,12 @@
   }
   video.addEventListener("play", ()=>{ $("btnPlay").textContent="Pause ❙❙"; frameLoop(); });
   video.addEventListener("pause", ()=>{ $("btnPlay").textContent="Play ▸"; currentFrame=clampFrame(video.currentTime*fps); refresh(); });
-  video.addEventListener("seeked", ()=>{ seeking=false; if(video.paused){ currentFrame=clampFrame(video.currentTime*fps); refresh(); } });
+  video.addEventListener("seeked", ()=>{
+    if(PERF && _seekT0){ perf.seek.push(performance.now()-_seekT0); _seekT0=0; }
+    if(pendingSeekT!=null){ const t=pendingSeekT; pendingSeekT=null; if(PERF) _seekT0=performance.now(); video.currentTime=t; return; }  // chase the latest requested frame
+    seeking=false;
+    if(video.paused){ currentFrame=clampFrame(video.currentTime*fps); refresh(); }
+  });
 
   // ---------- load ----------
   function loadFile(file){
@@ -1016,7 +1068,11 @@
       tl.style.cursor=(hoverServe||hoverMark)?"ew-resize":"pointer";
     }
     hoverFrame=frameFromEvent(e);
-    showTip(e); drawTimeline();
+    // The hover preview is a SECOND video decoder. While scrubbing or dragging, the main
+    // stage video is already seeking to this frame — running the preview too means two
+    // full decodes of a long file competing. Only decode the preview on a pure hover.
+    if(scrubbing || dragMark || dragServe) hideTip(); else showTip(e);
+    drawTimeline();
   });
   tl.addEventListener("pointerup", ()=>{
     if(dragServe){ dragServe=null; refresh(); }
@@ -1166,6 +1222,7 @@
     document.documentElement.classList.toggle("dark", t==="dark");
     $("btnTheme").textContent = t==="dark" ? "☀︎ Light" : "☾ Dark";
     readColors();   // timeline colors are cached; refresh them when the theme flips
+    staticDirty=true;   // band/mark colors live in the cached static layer
     if(!editor.classList.contains("hidden")) drawTimeline();
   }
   $("btnTheme").onclick = ()=>{
