@@ -9,9 +9,12 @@ model** works; a **serve-detection model** is built but **untrained**. The singl
 blocking step is **labeling serves**, then training the serve model.
 
 ## Where things stand
-- **Labeler** (`index.html`) — schema **v2**. Marks play/nonplay segments *and*
-  single-frame **serve events** (press `S`), serves stored by **timestamp**
-  (fps-safe). ✅ Pushed to `main` (commit 39831c5). This is the only thing in the repo.
+- **Labeler** (`index.html`) — schema **v2**. Marks play/nonplay segments, single-frame
+  **serve events** (`S`), per-rally **serve side** (`T`/`B`), and **set breaks** (`E`,
+  in the gap between sets) each with a **required winner** — serves/set-breaks stored by
+  **timestamp** (fps-safe). Also has **Import…** (reload an exported `.labels.json` onto
+  the open video — the safety net for updates/cleared storage). `v2` now additively
+  carries a `set_breaks` array (`{time, frame, winner}`). This is the only thing in the repo.
 - **Play/nonplay model** (`our_model/`, local only) — MobileNet embedding + motion
   + MLP. Trained on GVC-gym (PANAMBA ×3) + Forza (toko). Honest accuracy ~**70–77%
   same-venue**, ~**53% on a brand-new gym**. Artifacts: `our_model/models/clf.joblib`.

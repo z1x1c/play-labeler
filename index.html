@@ -145,6 +145,7 @@
   .score-hud .sh-num.top{color:#5aa9ff}
   .score-hud .sh-num.bottom{color:#5fce86}
   .score-hud .sh-colon{opacity:.45;font-weight:700}
+  .score-hud .sh-set{font-size:11px;font-weight:800;letter-spacing:.06em;color:#c9a8e6;padding-right:8px;margin-right:2px;border-right:1px solid rgba(255,255,255,.18)}
 
   .readout{
     display:flex;align-items:center;gap:18px;margin:16px 2px 10px;
@@ -167,6 +168,7 @@
   .legend .sw.nonplay{background:var(--nonplay)}
   .legend .sw.unlabeled{background:var(--unlabeled)}
   .legend .sw.serve{background:#ff9500;border-color:#ff9500}
+  .legend .sw.setbreak{background:#af52de;border-color:#af52de}
   .legend .spacer{flex:1}
   .legend kbd{font:inherit;font-size:11px;background:var(--kbd);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
 
@@ -180,6 +182,9 @@
   .lab-btn.serve{background:#ff9500;border-color:#ff9500;color:#fff}
   .lab-btn.serve:hover{opacity:.88}
   .lab-btn.serve.on{background:#c76b00;border-color:#c76b00}
+  .lab-btn.setbreak{background:#af52de;border-color:#af52de;color:#fff}
+  .lab-btn.setbreak:hover{opacity:.88}
+  .lab-btn.setbreak.on{background:#8a3fb0;border-color:#8a3fb0}
   .controls .spacer{flex:1}
   .fps{display:flex;align-items:center;gap:7px;color:var(--ink-2);font-size:13px}
   .fps input{width:58px;padding:6px 8px;border:1px solid var(--line-2);border-radius:7px;font:inherit;font-size:13px;text-align:right;background:var(--btn-bg);color:var(--ink)}
@@ -191,6 +196,7 @@
   .ss-title small{display:block;color:var(--ink-3);font-weight:500;font-size:12px;letter-spacing:0;margin-top:2px}
   .ss-stat{margin-left:auto;color:var(--ink-2);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
   .ss-stat b{color:var(--ink);font-weight:600}
+  .ss-stat b.warn{color:#ff3b30}
   .ss-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0}
   .ss-sel{color:var(--ink-2);font-size:13px}
   .ss-controls .spacer{flex:1}
@@ -245,6 +251,7 @@
   <button class="btn ghost" id="btnRedo" disabled title="Redo (⇧⌘Z)">Redo</button>
   <button class="btn ghost" id="btnClear" disabled>Clear</button>
   <button class="btn" id="btnOpen" title="Open a different video">Open…</button>
+  <button class="btn ghost" id="btnImport" title="Load a .labels.json exported earlier (merges onto the current video)">Import…</button>
   <button class="btn primary" id="btnExport" disabled>Export</button>
   <button class="btn ghost" id="btnCsv" disabled title="Also download a flat CSV">⇩ csv</button>
 </header>
@@ -266,7 +273,8 @@
       <div class="badge none" id="badge">—</div>
       <div class="side-badge hidden" id="sideBadge">—</div>
       <!-- reconstructed point score (rally scoring): server of a rally = winner of the previous one -->
-      <div class="score-hud hidden" id="scoreHUD" title="Reconstructed score — the team that serves a rally won the previous one (rally scoring)">
+      <div class="score-hud hidden" id="scoreHUD" title="Reconstructed score — the team that serves a rally won the previous one (rally scoring). Resets each set.">
+        <span class="sh-set" id="shSet">Set 1</span>
         <span class="sh-side top">TOP</span>
         <span class="sh-num top" id="shTop">0</span>
         <span class="sh-colon">:</span>
@@ -294,6 +302,7 @@
         <span><span class="sw nonplay"></span>Non-play</span>
         <span><span class="sw unlabeled"></span>Unlabeled</span>
         <span><span class="sw serve"></span>Serve</span>
+        <span><span class="sw setbreak"></span>Set break</span>
         <span class="spacer"></span>
         <span>Click to seek · hover for a preview · drag a mark or serve to move it · click one then <kbd>⌫</kbd> to delete · <kbd>[</kbd> <kbd>]</kbd> jump between marks</span>
       </div>
@@ -311,6 +320,7 @@
       </div>
       <div class="group">
         <button class="btn lab-btn serve" id="btnServe" title="Mark / remove a serve at this exact frame (S)">⑆ Serve</button>
+        <button class="btn lab-btn setbreak" id="btnSetBreak" title="Mark / remove a set break at this frame (E)">⊞ Set end</button>
       </div>
       <div class="group" title="Playback speed">
         <button class="btn spd" data-s="0.25">¼×</button>
@@ -331,6 +341,7 @@
       When paused, placing a label auto-steps to the next frame.
       &nbsp;·&nbsp; <b>Mark a serve</b> at the exact contact frame with <kbd>S</kbd> (press again to remove) — it's an instant, stored by timestamp.
       &nbsp;·&nbsp; <b>Serve side per rally:</b> while inside an in-play segment, press <kbd>T</kbd> (top served) or <kbd>B</kbd> (bottom served) — it auto-jumps to the next unlabeled rally.
+      &nbsp;·&nbsp; <b>Set end:</b> in the gap between sets press <kbd>E</kbd> to mark a set break, then <kbd>T</kbd>/<kbd>B</kbd> for who won that set (required to export). Teams switch sides each set, but serve side stays top/bottom by screen half.
       &nbsp;·&nbsp; Step frames <kbd>,</kbd> <kbd>.</kbd> (hold <kbd>⇧</kbd> = ±10) &nbsp;·&nbsp; <kbd>↓</kbd> back to last labeled frame &nbsp;·&nbsp; <kbd>Enter</kbd> / <kbd>0</kbd> jump to start
       &nbsp;·&nbsp; Click a timeline mark or serve to select it, then <kbd>Backspace</kbd> / <kbd>Delete</kbd> to remove it &nbsp;·&nbsp; Undo <kbd>⌘Z</kbd> / Redo <kbd>⇧⌘Z</kbd>
     </div>
@@ -361,12 +372,34 @@
       </div>
       <div class="rally-list" id="rallyList"></div>
     </div>
+
+    <!-- set breaks: boundaries between sets (score resets, teams switch sides) -->
+    <div class="ss-panel" id="setPanel">
+      <div class="ss-head">
+        <div class="ss-title">Sets <small>mark each set boundary with <kbd>E</kbd> — <b>winner</b> = who won that set (required to export)</small></div>
+        <div class="ss-stat"><b id="setCount">0</b> set breaks · <b id="setMissing">0</b> missing a winner</div>
+      </div>
+      <div class="ss-controls">
+        <span class="ss-sel" id="setSel">No set breaks yet — press E at a set boundary (in the gap between sets)</span>
+        <div class="spacer"></div>
+        <div class="group">
+          <button class="btn" id="btnSetBreakAdd" title="Mark / remove a set break at the current frame (E)">⊞ Set end here</button>
+        </div>
+        <div class="group">
+          <button class="btn lab-btn top" id="btnSetTop" disabled title="Top won this set (T when parked on a set break)">▲ Top won</button>
+          <button class="btn lab-btn bottom" id="btnSetBottom" disabled title="Bottom won this set (B when parked on a set break)">▼ Bottom won</button>
+          <button class="btn ghost" id="btnSetClear" disabled title="Clear this set's winner">Clear</button>
+        </div>
+      </div>
+      <div class="rally-list" id="setList"></div>
+    </div>
   </section>
 </main>
 
 <footer>Play Labeler · runs 100% locally · <span id="foot"></span></footer>
 
 <input id="file" type="file" accept="video/*" class="hidden" />
+<input id="labelFile" type="file" accept=".json,application/json" class="hidden" />
 
 <div id="tip" class="hidden"><canvas id="tipCv" width="200" height="112"></canvas><div class="tt" id="tipTxt"></div></div>
 
@@ -408,13 +441,22 @@
   // next serve, so its point can't be reconstructed. This stores nothing derived and
   // no heuristics: just the one point the webapp otherwise couldn't compute.
   let winners = {};
-  let history = [];   // past snapshots (JSON strings of {boundaries, serves, serveSides, winners})
+  // set breaks: the boundary between two sets. Stored by {time} in SECONDS (fps-safe,
+  // like serves) plus a REQUIRED {winner} ("top"|"bottom") = who won the set that just
+  // ended (= who won that set's final rally, the one point the serve-chain can't derive
+  // because the next serve belongs to a new set). Teams switch court sides between sets,
+  // but serve_side stays SPATIAL (top/bottom half), so labeling of rallies is unaffected.
+  let setBreaks = [];
+  let history = [];   // past snapshots (JSON strings of {boundaries, serves, serveSides, winners, setBreaks})
   let future = [];    // redo stack
 
   // ---------- helpers ----------
   const clampFrame = f => Math.max(0, Math.min(frameCount ? frameCount - 1 : 0, Math.round(f)));
   const serveFrame = sv => clampFrame(Math.round(sv.time * fps));
   const serveIndexAtFrame = f => serves.findIndex(sv => serveFrame(sv) === f);
+  const setBreakFrame = sb => clampFrame(Math.round(sb.time * fps));
+  const setBreakIndexAtFrame = f => setBreaks.findIndex(sb => setBreakFrame(sb) === f);
+  const SETBREAK_C = "#af52de";   // set-break marker color (purple — distinct from serve orange)
 
   function fmtTime(sec){
     if(!isFinite(sec)) sec = 0;
@@ -440,8 +482,8 @@
 
   // ---------- edits (history-tracked) ----------
   // one undo entry captures BOTH boundaries and serves so edits to either are reversible
-  const stateStr = () => JSON.stringify({ b: boundaries, s: serves, ss: serveSides, w: winners });
-  function loadState(str){ const o = JSON.parse(str); boundaries = o.b || []; serves = o.s || []; serveSides = o.ss || {}; winners = o.w || {}; }
+  const stateStr = () => JSON.stringify({ b: boundaries, s: serves, ss: serveSides, w: winners, sb: setBreaks });
+  function loadState(str){ const o = JSON.parse(str); boundaries = o.b || []; serves = o.s || []; serveSides = o.ss || {}; winners = o.w || {}; setBreaks = o.sb || []; }
   function snapshot(){ history.push(stateStr()); if(history.length>500) history.shift(); future.length=0; }
 
   function normalize(){
@@ -469,8 +511,8 @@
     if(video.paused) step(1);
   }
 
-  function undo(){ if(!history.length) return; future.push(stateStr()); loadState(history.pop()); selMark=null; selServe=null; refresh(); }
-  function redo(){ if(!future.length) return; history.push(stateStr()); loadState(future.pop()); selMark=null; selServe=null; refresh(); }
+  function undo(){ if(!history.length) return; future.push(stateStr()); loadState(history.pop()); selMark=null; selServe=null; selSetBreak=null; refresh(); }
+  function redo(){ if(!future.length) return; history.push(stateStr()); loadState(future.pop()); selMark=null; selServe=null; selSetBreak=null; refresh(); }
 
   // remove the click-selected timeline mark (a play/nonplay boundary) or serve marker
   function deleteSelected(){
@@ -482,9 +524,14 @@
       const i=serves.indexOf(selServe);
       if(i<0){ selServe=null; return; }
       snapshot(); serves.splice(i,1); selServe=null; refresh();
+    } else if(selSetBreak){
+      const i=setBreaks.indexOf(selSetBreak);
+      if(i<0){ selSetBreak=null; return; }
+      snapshot(); setBreaks.splice(i,1); selSetBreak=null; refresh();
     }
   }
-  function clearAll(){ if(!boundaries.length && !serves.length && !Object.keys(serveSides).length && !Object.keys(winners).length) return; snapshot(); boundaries=[]; serves=[]; serveSides={}; winners={}; selMark=null; selServe=null; refresh(); }
+  function clearAll(){ if(!hasAnyLabels()) return; snapshot(); boundaries=[]; serves=[]; serveSides={}; winners={}; setBreaks=[]; selMark=null; selServe=null; selSetBreak=null; refresh(); }
+  const hasAnyLabels = () => boundaries.length || serves.length || Object.keys(serveSides).length || Object.keys(winners).length || setBreaks.length;
 
   // toggle a serve at the current frame (add if none here, remove if one already is).
   // Unlike placeBoundary it does NOT auto-step — a serve is a precise instant.
@@ -496,6 +543,42 @@
     else serves.push({ time: currentFrame/fps });
     serves.sort((a,b)=>a.time-b.time);
     refresh();
+  }
+
+  // ---------- set breaks ----------
+  // toggle a set break at the current frame (add if none, remove if one is here). A new
+  // set break starts with no winner — required before export.
+  function toggleSetBreak(){
+    if(!frameCount) return;
+    snapshot();
+    const i = setBreakIndexAtFrame(currentFrame);
+    if(i>=0){ if(setBreaks[i]===selSetBreak) selSetBreak=null; setBreaks.splice(i,1); }
+    else { const sb={ time: currentFrame/fps, winner:null }; setBreaks.push(sb); selSetBreak=sb; }
+    setBreaks.sort((a,b)=>a.time-b.time);
+    refresh();
+  }
+  // the set break we're acting on: the one at the playhead, else the click-selected one
+  function currentSetBreak(){
+    const i=setBreakIndexAtFrame(currentFrame);
+    if(i>=0) return setBreaks[i];
+    return (selSetBreak && setBreaks.includes(selSetBreak)) ? selSetBreak : null;
+  }
+  function setSetWinner(side){       // side: "top" | "bottom" | null
+    const sb=currentSetBreak();
+    if(!sb) return;
+    snapshot();
+    sb.winner = side;                // null clears it
+    refresh();
+  }
+  // set breaks sorted by frame — used to slice the timeline into sets
+  const setBreakFramesSorted = () => setBreaks.map(setBreakFrame).sort((a,b)=>a-b);
+  // 1-based set number containing frame f (each break starts a new set)
+  function setNumberAt(f){ let n=1; for(const bf of setBreakFramesSorted()){ if(bf<=f) n++; else break; } return n; }
+  // T / B are contextual: serve side when the playhead is inside a rally, otherwise the
+  // set winner when parked on a set break (both are just "top"/"bottom").
+  function topBottom(side){
+    if(currentRallyStart()!=null) setServeSide(side);
+    else if(currentSetBreak()!=null) setSetWinner(side);
   }
 
   // ---------- serve side (per-rally) ----------
@@ -618,7 +701,8 @@
 
   let hoverFrame=null, hoverMark=null, dragMark=null;   // hoverMark/dragMark hold a boundary object
   let hoverServe=null, dragServe=null;                  // ...hold a serve object
-  let selMark=null, selServe=null;                      // click-selected mark / serve (Backspace deletes it)
+  let hoverSetBreak=null, dragSetBreak=null;            // ...hold a set-break object
+  let selMark=null, selServe=null, selSetBreak=null;    // click-selected mark / serve / set break (Backspace deletes it)
 
   // shared glyph drawers so the static (base color) and overlay (hot/accent) layers
   // paint identical marks/serves — the overlay's wider accent glyph fully covers the base.
@@ -631,6 +715,18 @@
     const x = Math.round(serveFrame(sv) / frameCount * W);
     g.fillStyle=color; g.fillRect(x-1, 0, 2, H);
     g.beginPath(); g.moveTo(x-5,0); g.lineTo(x+5,0); g.lineTo(x,9); g.closePath(); g.fill();
+  }
+  // set break: full-height line + a winner badge at the bottom (T/B disc, or a red "?"
+  // when the winner isn't set yet — export is blocked until every "?" is resolved).
+  function drawSetBreakGlyph(g, sb, W, H, lineColor, wdt){
+    const x = Math.round(setBreakFrame(sb) / frameCount * W);
+    g.fillStyle=lineColor; g.fillRect(x-(wdt>>1), 0, wdt, H);
+    const w=sb.winner;
+    g.fillStyle = w==="top" ? "#0a84ff" : w==="bottom" ? "#2fb457" : "#ff3b30";  // red = winner missing
+    g.beginPath(); g.arc(x, H-9, 8, 0, Math.PI*2); g.fill();
+    g.fillStyle="#fff"; g.textAlign="center"; g.textBaseline="middle";
+    g.font="800 10px -apple-system,system-ui,sans-serif";
+    g.fillText(w==="top"?"T":w==="bottom"?"B":"?", x, H-8.5);
   }
 
   // rebuild the cached static layer (bands + marks + serves + discs) into the offscreen
@@ -661,6 +757,9 @@
     }
     // serve markers
     for(const sv of serves) drawServeGlyph(sctx, sv, W, H, SERVE_C);
+
+    // set breaks (base color; hot ones re-stamped in the overlay)
+    for(const sb of setBreaks) drawSetBreakGlyph(sctx, sb, W, H, SETBREAK_C, 3);
 
     // per-rally T/B discs
     sctx.textAlign="center"; sctx.textBaseline="middle";
@@ -696,12 +795,13 @@
     ctx.drawImage(scv,0,0);
     ctx.setTransform(dpr,0,0,dpr,0,0);
 
-    // hot/selected marks + serves — re-stamp in accent on top of their base glyphs
+    // hot/selected marks + serves + set breaks — re-stamp in accent on top of base glyphs
     for(const b of [selMark, hoverMark, dragMark]) if(b) drawMarkGlyph(ctx, b, W, H, accC, accC, 5);
     for(const sv of [selServe, hoverServe, dragServe]) if(sv) drawServeGlyph(ctx, sv, W, H, accC);
+    for(const sb of [selSetBreak, hoverSetBreak, dragSetBreak]) if(sb) drawSetBreakGlyph(ctx, sb, W, H, accC, 5);
 
     // hover position ghost line
-    if(hoverFrame!=null && !dragMark && !hoverMark && !dragServe && !hoverServe){
+    if(hoverFrame!=null && !dragMark && !hoverMark && !dragServe && !hoverServe && !dragSetBreak && !hoverSetBreak){
       const hx = frameCount>1 ? hoverFrame/(frameCount-1)*W : 0;
       ctx.fillStyle = "rgba(10,132,255,.45)";
       ctx.fillRect(Math.round(hx), 0, 1, H);
@@ -736,32 +836,36 @@
   // are skipped, so the score simply lags until they're labeled. (The final rally of
   // a set is never counted — there's no later serve to reveal its winner.)
   function scoreAt(upto){
-    const rallies=getRallies();
+    // score within the CURRENT set only — set breaks reset the count.
+    const bf = setBreakFramesSorted();
+    let ss=0, se=frameCount;                 // [ss, se) = frame span of the current set
+    for(const f of bf){ if(f<=upto) ss=f; else { se=f; break; } }
+    const rallies = getRallies().filter(r=> r.start>=ss && r.start<se);
     let top=0, bottom=0;
+    // serve-chain: the server of rally i (i>=1 within the set) won rally i-1
     for(let i=1;i<rallies.length;i++){
-      if(rallies[i].start>upto) break;      // this serve hasn't happened yet
+      if(rallies[i].start>upto) break;       // this serve hasn't happened yet
       if(rallies[i].side==="top") top++;
       else if(rallies[i].side==="bottom") bottom++;
     }
-    // explicit winners fill in points the serve-chain can't reveal (the final rally,
-    // which has no next serve). Only credit when the next serve hasn't ALREADY
-    // revealed that rally's winner, so we never double-count. Counted once the rally
-    // has finished (end frame reached).
-    for(let i=0;i<rallies.length;i++){
-      const w=rallies[i].winner;
-      if(!w) continue;
-      const revealedByNext = (i+1<rallies.length) && rallies[i+1].start<=upto && rallies[i+1].side;
-      if(revealedByNext) continue;
-      if(rallies[i].end<=upto){ if(w==="top") top++; else if(w==="bottom") bottom++; }
+    // the set's LAST rally has no next serve to reveal it. Credit it from the closing set
+    // break's winner (an internal set) or the explicit rally winner (the video's final
+    // rally, which has no set break after it), once that rally has finished.
+    if(rallies.length){
+      const last=rallies[rallies.length-1];
+      const closing = setBreaks.find(sb=>setBreakFrame(sb)===se);
+      const w = closing ? closing.winner : last.winner;
+      if(w && last.end<=upto){ if(w==="top") top++; else if(w==="bottom") bottom++; }
     }
     return {top, bottom};
   }
   const scoreHUD=$("scoreHUD");
   function updateScoreHUD(){
-    if(!getRallies().some(r=>r.side)){ scoreHUD.classList.add("hidden"); return; }
+    if(!getRallies().some(r=>r.side) && !setBreaks.length){ scoreHUD.classList.add("hidden"); return; }
     scoreHUD.classList.remove("hidden");
     const s=scoreAt(currentFrame);
     $("shTop").textContent=s.top; $("shBot").textContent=s.bottom;
+    const setEl=$("shSet"); if(setEl) setEl.textContent = "Set "+setNumberAt(currentFrame);
   }
 
   // ---------- serve-side panel + rally list ----------
@@ -842,6 +946,41 @@
     });
   }
 
+  // ---------- set-break panel ----------
+  const setListEl=$("setList");
+  function renderSetPanel(){
+    if(!setListEl) return;   // headless / no DOM
+    const sorted=setBreaks.slice().sort((a,b)=>a.time-b.time);
+    const sbCur=currentSetBreak();
+    const curWinner=sbCur ? sbCur.winner : null;
+    const missing=setBreaks.filter(sb=>!sb.winner).length;
+    $("setCount").textContent=setBreaks.length;
+    const missEl=$("setMissing"); missEl.textContent=missing;
+    missEl.classList.toggle("warn", missing>0);
+
+    $("btnSetTop").disabled=!sbCur; $("btnSetBottom").disabled=!sbCur; $("btnSetClear").disabled=!sbCur||!curWinner;
+    $("btnSetTop").classList.toggle("on", curWinner==="top");
+    $("btnSetBottom").classList.toggle("on", curWinner==="bottom");
+    const idx=sbCur ? sorted.indexOf(sbCur) : -1;
+    $("setSel").textContent = sbCur
+      ? "Set "+(idx+1)+" ends here · "+fmtTime(sbCur.time)+" · "+(curWinner ? (curWinner==="top"?"Top":"Bottom")+" won" : "who won? press T / B")
+      : (setBreaks.length ? "Seek onto a set break to set its winner" : "No set breaks yet — press E at a set boundary (in the gap between sets)");
+
+    setListEl.innerHTML="";
+    sorted.forEach((sb,i)=>{
+      const w=sb.winner, isCur=sb===sbCur;
+      const row=document.createElement("div");
+      row.className="rl-row "+(w?"side-"+w:"unlabeled")+(isCur?" cur":"");
+      const wCls=w==="top"?"top":w==="bottom"?"bottom":"none";
+      const wTxt=w==="top"?"▲ Top won":w==="bottom"?"▼ Bottom won":"— winner?";
+      row.innerHTML='<span class="rl-num">⊞'+(i+1)+'</span>'+
+        '<span class="rl-time">ends set '+(i+1)+' · '+fmtTime(sb.time)+'</span>'+
+        '<span class="rl-side '+wCls+'">'+wTxt+'</span>';
+      row.addEventListener("click", ()=>{ selSetBreak=sb; selMark=null; selServe=null; gotoFrame(setBreakFrame(sb)); refresh(); });
+      setListEl.appendChild(row);
+    });
+  }
+
   function refresh(){
     markDirty();   // every edit path funnels here; invalidate the rally + static caches
     rFrame.textContent = currentFrame;
@@ -854,14 +993,16 @@
     updateBadge();
     drawTimeline();
     renderRallyList();
+    renderSetPanel();
     updateScoreHUD();
-    const has = boundaries.length || serves.length || Object.keys(serveSides).length;
+    const has = hasAnyLabels();
     btnUndo.disabled = !history.length;
     btnRedo.disabled = !future.length;
     btnClear.disabled = !has;
     btnExport.disabled = !has;
     btnCsv.disabled = !has;
     btnServe.classList.toggle("on", serveIndexAtFrame(currentFrame)>=0);
+    const bSet=$("btnSetBreak"); if(bSet) bSet.classList.toggle("on", setBreakIndexAtFrame(currentFrame)>=0);
     autosave();
   }
 
@@ -872,10 +1013,10 @@
   let autosaveTimer=null;
   function autosave(){
     if(!videoName || videoName==="video") return;
-    if(!boundaries.length && !serves.length && !Object.keys(serveSides).length && !Object.keys(winners).length) return;   // never clobber a saved set with an empty one
+    if(!hasAnyLabels()) return;   // never clobber a saved set with an empty one
     clearTimeout(autosaveTimer);
     autosaveTimer=setTimeout(()=>{
-      try{ localStorage.setItem(saveKey(), JSON.stringify({fps, frameCount, boundaries, serves, serveSides, winners})); }catch(e){}
+      try{ localStorage.setItem(saveKey(), JSON.stringify({fps, frameCount, boundaries, serves, serveSides, winners, setBreaks})); }catch(e){}
     }, 300);
   }
   function tryRestore(){
@@ -888,9 +1029,10 @@
       if(hasSaved && confirm("Found saved labels for “"+videoName+"”. Restore them?")){
         boundaries = Array.isArray(saved.boundaries) ? saved.boundaries : [];
         serves = Array.isArray(saved.serves) ? saved.serves : [];
-        // older saves predate serve_side / winners — treat a missing/invalid map as none
+        // older saves predate serve_side / winners / set breaks — treat a missing/invalid value as none
         serveSides = (saved.serveSides && typeof saved.serveSides==="object" && !Array.isArray(saved.serveSides)) ? saved.serveSides : {};
         winners = (saved.winners && typeof saved.winners==="object" && !Array.isArray(saved.winners)) ? saved.winners : {};
+        setBreaks = Array.isArray(saved.setBreaks) ? saved.setBreaks : [];
         normalize();
       }
     }catch(e){}
@@ -929,11 +1071,57 @@
     video.addEventListener("loadedmetadata", ()=>{
       fps = parseFloat(fpsInput.value)||30;
       frameCount = Math.max(1, Math.round(video.duration * fps));
-      boundaries=[]; serves=[]; serveSides={}; winners={}; history=[]; future=[]; currentFrame=0; selMark=null; selServe=null;
+      boundaries=[]; serves=[]; serveSides={}; winners={}; setBreaks=[]; history=[]; future=[]; currentFrame=0; selMark=null; selServe=null; selSetBreak=null;
       tryRestore();
       drop.classList.add("hidden"); editor.classList.remove("hidden");
       gotoFrame(0); refresh();
     }, {once:true});
+  }
+
+  // ---------- import labels ----------
+  // Restore labels from an exported .labels.json (or a raw autosave dump) onto the
+  // currently-open video. This is the safety net for schema updates / cleared storage —
+  // an export is no longer a dead file. Segments are re-normalized back into boundaries;
+  // serves & set breaks are timestamp-based so they map regardless of fps.
+  function parseLabelData(data){
+    if(!data || typeof data!=="object") return null;
+    if(Array.isArray(data.segments)){                                  // exported (denormalized) form
+      const boundaries=data.segments.map(s=>({frame:s.start_frame|0, label:s.label===PLAY?PLAY:NON}));
+      const serveSides={}, winners={};
+      for(const s of data.segments){ if(s.label===PLAY){ if(s.serve_side) serveSides[s.start_frame|0]=s.serve_side; if(s.winner) winners[s.start_frame|0]=s.winner; } }
+      const serves=Array.isArray(data.serve_events)? data.serve_events.map(e=>({time:+e.time})) : [];
+      const setBreaks=Array.isArray(data.set_breaks)? data.set_breaks.map(e=>({time:+e.time, winner:e.winner||null})) : [];
+      return {boundaries, serves, serveSides, winners, setBreaks, fps:+data.fps||null, frameCount:data.frame_count|0};
+    }
+    if(Array.isArray(data.boundaries)){                                 // raw autosave form
+      return {
+        boundaries:data.boundaries,
+        serves:Array.isArray(data.serves)?data.serves:[],
+        serveSides:(data.serveSides&&typeof data.serveSides==="object"&&!Array.isArray(data.serveSides))?data.serveSides:{},
+        winners:(data.winners&&typeof data.winners==="object"&&!Array.isArray(data.winners))?data.winners:{},
+        setBreaks:Array.isArray(data.setBreaks)?data.setBreaks:[],
+        fps:+data.fps||null, frameCount:data.frameCount|0
+      };
+    }
+    return null;
+  }
+  function importLabels(file){
+    if(editor.classList.contains("hidden")){ alert("Open the video first, then Import its labels."); return; }
+    const reader=new FileReader();
+    reader.onload=()=>{
+      try{
+        const parsed=parseLabelData(JSON.parse(reader.result));
+        if(!parsed){ alert("This doesn't look like a Play-Labeler labels file."); return; }
+        if(hasAnyLabels() && !confirm("Replace the current labels with the imported ones?")) return;
+        snapshot();
+        boundaries=parsed.boundaries; serves=parsed.serves; serveSides=parsed.serveSides; winners=parsed.winners; setBreaks=parsed.setBreaks;
+        if(parsed.fps){ fps=parsed.fps; fpsInput.value=fps; frameCount = video.duration ? Math.max(1,Math.round(video.duration*fps)) : (parsed.frameCount||frameCount); }
+        selMark=null; selServe=null; selSetBreak=null;
+        normalize(); currentFrame=clampFrame(currentFrame); refresh();
+        alert("Imported "+boundaries.length+" boundaries · "+serves.length+" serves · "+setBreaks.length+" set breaks.");
+      }catch(err){ alert("Import failed: "+err.message); console.error("import failed", err); }
+    };
+    reader.readAsText(file);
   }
 
   // recompute frameCount if fps changed after load (labels are in frame space, so
@@ -978,6 +1166,13 @@
   $("btnWinTop").onclick=()=>setWinner("top");
   $("btnWinBottom").onclick=()=>setWinner("bottom");
   $("btnWinClear").onclick=()=>setWinner(null);
+  $("btnSetBreak").onclick=toggleSetBreak;
+  $("btnSetBreakAdd").onclick=toggleSetBreak;
+  $("btnSetTop").onclick=()=>setSetWinner("top");
+  $("btnSetBottom").onclick=()=>setSetWinner("bottom");
+  $("btnSetClear").onclick=()=>setSetWinner(null);
+  $("btnImport").onclick=()=>$("labelFile").click();
+  $("labelFile").onchange=e=>{ const f=e.target.files[0]; if(f) importLabels(f); e.target.value=""; };
   btnUndo.onclick=undo; btnRedo.onclick=redo; btnClear.onclick=clearAll;
 
   // ---------- timeline: seek, marker select/drag, hover preview ----------
@@ -1009,6 +1204,18 @@
     }
     return best;
   }
+  // set-break marker near the pointer — grabbable only in the BOTTOM band (where its
+  // winner badge sits), so it doesn't fight serve handles (top) or scrubbing
+  function setBreakNear(e){
+    const rect=tl.getBoundingClientRect();
+    if(e.clientY-rect.top < rect.height*0.45) return null;
+    const x=e.clientX-rect.left; let best=null, bd=8;
+    for(const sb of setBreaks){
+      const d=Math.abs(setBreakFrame(sb)/frameCount*rect.width - x);
+      if(d<bd){ bd=d; best=sb; }
+    }
+    return best;
+  }
 
   // hover preview: a hidden second <video> decodes the hovered frame into a tooltip
   const pv=document.createElement("video"); pv.muted=true; pv.preload="auto"; pv.playsInline=true;
@@ -1036,10 +1243,12 @@
   tl.addEventListener("pointerdown", e=>{
     tl.setPointerCapture(e.pointerId);
     const sv=serveNear(e);
-    if(sv){ dragServe=sv; selServe=sv; selMark=null; dragMoved=false; gotoFrame(serveFrame(sv)); return; }  // serve takes priority in top band
+    if(sv){ dragServe=sv; selServe=sv; selMark=null; selSetBreak=null; dragMoved=false; gotoFrame(serveFrame(sv)); return; }  // serve takes priority in top band
+    const sbk=setBreakNear(e);
+    if(sbk){ dragSetBreak=sbk; selSetBreak=sbk; selMark=null; selServe=null; dragMoved=false; gotoFrame(setBreakFrame(sbk)); refresh(); return; }  // set break grabbable in bottom band
     const m=markNear(e);
-    if(m){ dragMark=m; selMark=m; selServe=null; dragMoved=false; gotoFrame(m.frame); }   // click selects the mark; drag moves it
-    else { scrubbing=true; selMark=null; selServe=null; seekFromEvent(e); }   // scrubbing empty space clears the selection
+    if(m){ dragMark=m; selMark=m; selServe=null; selSetBreak=null; dragMoved=false; gotoFrame(m.frame); }   // click selects the mark; drag moves it
+    else { scrubbing=true; selMark=null; selServe=null; selSetBreak=null; seekFromEvent(e); }   // scrubbing empty space clears the selection
   });
   let dragMoved=false;
   tl.addEventListener("pointermove", e=>{
@@ -1049,6 +1258,15 @@
         if(!dragMoved){ snapshot(); dragMoved=true; }
         dragServe.time=nt;
         serves.sort((a,b)=>a.time-b.time);
+        gotoFrame(f); refresh();
+      }
+    }
+    else if(dragSetBreak){
+      const f=frameFromEvent(e);
+      if(f!==setBreakFrame(dragSetBreak)){
+        if(!dragMoved){ snapshot(); dragMoved=true; }
+        dragSetBreak.time=f/fps;
+        setBreaks.sort((a,b)=>a.time-b.time);
         gotoFrame(f); refresh();
       }
     }
@@ -1064,8 +1282,9 @@
     else if(scrubbing) seekFromEvent(e);
     else {
       hoverServe=serveNear(e);
-      hoverMark=hoverServe?null:markNear(e);
-      tl.style.cursor=(hoverServe||hoverMark)?"ew-resize":"pointer";
+      hoverSetBreak=hoverServe?null:setBreakNear(e);
+      hoverMark=(hoverServe||hoverSetBreak)?null:markNear(e);
+      tl.style.cursor=(hoverServe||hoverSetBreak||hoverMark)?"ew-resize":"pointer";
     }
     hoverFrame=frameFromEvent(e);
     // The hover preview is a SECOND video decoder. While scrubbing or dragging, the main
@@ -1076,11 +1295,12 @@
   });
   tl.addEventListener("pointerup", ()=>{
     if(dragServe){ dragServe=null; refresh(); }
+    if(dragSetBreak){ dragSetBreak=null; refresh(); }
     if(dragMark){ if(dragMoved) normalize(); dragMark=null; refresh(); }
     scrubbing=false;
   });
   tl.addEventListener("pointerleave", ()=>{
-    hoverFrame=null; hoverMark=null; hoverServe=null; hideTip(); drawTimeline();
+    hoverFrame=null; hoverMark=null; hoverServe=null; hoverSetBreak=null; hideTip(); drawTimeline();
   });
 
   window.addEventListener("resize", ()=>{ if(!editor.classList.contains("hidden")) drawTimeline(); });
@@ -1096,8 +1316,9 @@
       case "ArrowRight": e.preventDefault(); placeBoundary(currentFrame,PLAY); break;
       case "ArrowLeft":  e.preventDefault(); placeBoundary(currentFrame,NON);  break;
       case "s": case "S": e.preventDefault(); toggleServe(); break;
-      case "t": case "T": e.preventDefault(); setServeSide("top"); break;
-      case "b": case "B": e.preventDefault(); setServeSide("bottom"); break;
+      case "t": case "T": e.preventDefault(); topBottom("top"); break;
+      case "b": case "B": e.preventDefault(); topBottom("bottom"); break;
+      case "e": case "E": e.preventDefault(); toggleSetBreak(); break;
       case "Enter": case "0": e.preventDefault(); gotoFrame(0); break;
       case "Backspace": case "Delete": e.preventDefault(); deleteSelected(); break;
       case "ArrowDown":  e.preventDefault(); jumpMark(-1); break;
@@ -1151,6 +1372,16 @@
       labeled_fps: fps
     }));
   }
+  // set breaks, sorted, timestamp-first. `winner` = who won the set that ends here
+  // (required at export). Teams switch court sides at each break.
+  function buildSetBreaks(){
+    return setBreaks.slice().sort((a,b)=>a.time-b.time).map(sb=>({
+      time: +sb.time.toFixed(3),
+      frame: setBreakFrame(sb),
+      labeled_fps: fps,
+      winner: sb.winner || null
+    }));
+  }
   function download(name, text, type){
     const blob=new Blob([text],{type});
     const a=document.createElement("a");
@@ -1171,13 +1402,21 @@
       //    BOTTOM = near/our side; camera is fixed behind our court).
       //  · winner: "top" | "bottom" | null — EXPLICIT only. Under rally scoring the
       //    server of rally N+1 is the winner of rally N, so every winner is derivable
-      //    EXCEPT the final rally (no next serve). This is labeled only there; it's
-      //    null elsewhere by design — derive the rest, don't read it as "unknown".
-      field_notes: { serve_side: "top|bottom|null", winner: "top|bottom|null (explicit; set only on the final rally)" },
+      //    EXCEPT the final rally of each set (no next serve within the set). For internal
+      //    sets that final point lives on the following set_break.winner; for the very last
+      //    rally of the video it lives here. null elsewhere — derive the rest.
+      // set_breaks: boundaries between sets (timestamp-based). Score resets each set and
+      //    teams switch court sides. set_break.winner = who won the set that ends there.
+      field_notes: {
+        serve_side: "top|bottom|null (SPATIAL half — unaffected by teams switching sides)",
+        winner: "top|bottom|null (explicit; only the video's final rally)",
+        set_breaks: "boundary between sets; winner = who won the ending set (required)"
+      },
       created_utc: null,
       segments: buildSegments(),
       frame_labels: buildPerFrame(),  // index = frame number, value in {1,0,-1}
-      serve_events: buildServes()     // instantaneous rally starts, stored by timestamp
+      serve_events: buildServes(),    // instantaneous rally starts, stored by timestamp
+      set_breaks: buildSetBreaks()    // set boundaries + who won each set, by timestamp
     };
   }
   // Single JSON download. Firing two downloads (json + csv) trips the browser's
@@ -1186,6 +1425,14 @@
   // NN needs; CSV is available via the small ⇩ csv link if wanted.
   function exportJSON(){
     try{
+      // a set break's winner is REQUIRED — block export and jump to the first one missing it
+      const missing = setBreaks.filter(sb=>!sb.winner).sort((a,b)=>a.time-b.time);
+      if(missing.length){
+        selSetBreak=missing[0]; selMark=null; selServe=null; gotoFrame(setBreakFrame(missing[0])); refresh();
+        alert("Can't export yet: "+missing.length+" set break"+(missing.length>1?"s have":" has")+" no winner.\n"+
+              "Jumped to the first one — set who won it (press T or B, or the Top/Bottom-won buttons), then export again.");
+        return;
+      }
       const base = videoName.replace(/\.[^.]+$/,"");
       download(base+".labels.json", JSON.stringify(buildPayload(),null,2), "application/json");
     }catch(err){
@@ -1198,7 +1445,8 @@
       const base = videoName.replace(/\.[^.]+$/,"");
       const perFrame = buildPerFrame();
       const serveFrames = new Set(serves.map(serveFrame));
-      let csv="frame,time_sec,label,serve,serve_side,winner\n";
+      const setBreakWinnerByFrame = new Map(setBreaks.map(sb=>[setBreakFrame(sb), sb.winner||"unset"]));
+      let csv="frame,time_sec,label,serve,serve_side,winner,set_break\n";
       let bi=-1;
       for(let f=0; f<frameCount; f++){
         while(bi+1<boundaries.length && boundaries[bi+1].frame<=f) bi++;
@@ -1206,7 +1454,8 @@
         const inPlay=bi>=0 && boundaries[bi].label===PLAY;
         const side=inPlay ? (serveSides[boundaries[bi].frame]||"") : "";
         const win=inPlay ? (winners[boundaries[bi].frame]||"") : "";
-        csv += f+","+(f/fps).toFixed(3)+","+(v===1?"play":v===0?"nonplay":"unlabeled")+","+(serveFrames.has(f)?1:0)+","+side+","+win+"\n";
+        const sbk=setBreakWinnerByFrame.has(f) ? setBreakWinnerByFrame.get(f) : "";
+        csv += f+","+(f/fps).toFixed(3)+","+(v===1?"play":v===0?"nonplay":"unlabeled")+","+(serveFrames.has(f)?1:0)+","+side+","+win+","+sbk+"\n";
       }
       download(base+".labels.csv", csv, "text/csv");
     }catch(err){
@@ -1234,7 +1483,7 @@
   try{ theme=localStorage.getItem("playlabeler:theme"); }catch(e){}
   applyTheme(theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 
-  $("foot").textContent = "space play · ← non-play · → in play · s serve · t/b serve side";
+  $("foot").textContent = "space play · ← non-play · → in play · s serve · t/b serve side · e set end";
 
   // ---------- test hook (inert unless the URL carries ?pltest) ----------
   // Lets a headless harness drive the pure state/export logic without a real video.
@@ -1249,14 +1498,17 @@
           if(s.serves) serves=s.serves;
           if(s.serveSides) serveSides=s.serveSides;
           if(s.winners) winners=s.winners;
+          if(s.setBreaks) setBreaks=s.setBreaks;
           if(s.videoName!=null) videoName=s.videoName;
         },
         toggleServe, buildPayload, serveFrame, undo, redo, clearAll, refresh, drawTimeline,
         setServeSide, setWinner, getRallies, currentRallyStart, isTerminalRallyStart, deleteSelected, scoreAt,
+        toggleSetBreak, setSetWinner, currentSetBreak, setBreakFrame, setNumberAt, parseLabelData,
         get serves(){ return serves; },
         get boundaries(){ return boundaries; },
         get serveSides(){ return serveSides; },
-        get winners(){ return winners; }
+        get winners(){ return winners; },
+        get setBreaks(){ return setBreaks; }
       };
     }
   }catch(e){}
